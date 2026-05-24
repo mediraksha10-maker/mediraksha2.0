@@ -1,0 +1,22 @@
+{
+  "name": "mediraksha2.0",
+  "version": "2.0.0",
+  "description": "react(typescript) , fastapi, postgresql new stack",
+  "homepage": "https://github.com/mediraksha10-maker/mediraksha2.0#readme",
+  "bugs": {
+    "url": "https://github.com/mediraksha10-maker/mediraksha2.0/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mediraksha10-maker/mediraksha2.0.git"
+  },
+  "license": "ISC",
+  "author": "mediraksha team",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build":"npm install --prefix ./frontend && npm run build --prefix ./frontend && npm install --prefix ./backend",
+    "start": "npm start --prefix ./backend"
+  }
+}
