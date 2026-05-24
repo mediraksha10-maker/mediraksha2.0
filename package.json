@@ -16,7 +16,7 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build":"npm install --prefix ./frontend && npm run build --prefix ./frontend && npm install --prefix ./backend",
+    "build": "npm install --prefix ./frontend && npm run build --prefix ./frontend && npm install --prefix ./backend",
     "start": "npm start --prefix ./backend"
   }
 }
