@@ -2,6 +2,7 @@ import express from 'express';
 import dotenv from 'dotenv';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
+import path from 'path';
 
 import { pool, connectDB } from './config/db.js';
 
@@ -18,6 +19,7 @@ import authVerify from './middlewares/authVerify.js';
 
 dotenv.config();
 const app = express();
+const __dirname = path.resolve();
 
 
 // Middleware
@@ -36,9 +38,12 @@ app.get('/api', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/user',authVerify, userRoutes);
 app.use('/api/doctor', authVerify, doctorRoutes);
-app.use('/api/aichat', authverify, aiRoutes.js);
+app.use('/api/aichat', authVerify, aiRoutes);
 app.use('/api/hospital', authVerify, hospitalRoutes);
 app.use('/api/disease', authVerify, diseaseRoutes);
+app.use('/', (req, res) => {
+  res.status(200).sendFile(path.join(__dirname, '../../frontend/dist', 'index.html'));
+});
 
 
 // Start the server after connecting to the database
