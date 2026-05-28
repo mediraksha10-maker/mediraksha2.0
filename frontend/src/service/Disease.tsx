@@ -1,9 +1,11 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   Stethoscope, ShieldAlert, HeartPulse, Search, 
-  ArrowLeft, Pill, AlertTriangle, FileText, Activity
+  ArrowLeft, Pill, FileText, Activity
 } from "lucide-react";
 import { useNavigate } from "react-router";
+import api from '../api/Api';
+
 /* ── Type Definitions ── */
 interface DiseaseData {
   id: number;
@@ -12,47 +14,10 @@ interface DiseaseData {
   category: "Infectious" | "Chronic" | "Genetic" | "Lifestyle";
   risk_level: "Low" | "Medium" | "High";
   transmission: string;
-  symptoms: string[];
-  precautions: string[];
+  symptoms: string[] | string; // Handled array parsing if stored as string/text[]
+  precautions: string[] | string; // Handled array parsing if stored as string/text[]
   description: string;
 }
-
-/* ── Dummy Data (Simulating database response rows) ── */
-const MOCK_DISEASES: DiseaseData[] = [
-  {
-    id: 1,
-    name: "Diabetes Mellitus Type 2",
-    common_name: "Type 2 Diabetes",
-    category: "Chronic",
-    risk_level: "Medium",
-    transmission: "Non-communicable (Genetic & Lifestyle factors)",
-    description: "A long-term medical condition in which your body doesn't use insulin properly, resulting in high blood sugar levels over a sustained period.",
-    symptoms: ["Increased thirst", "Frequent urination", "Unexplained weight loss", "Fatigue"],
-    precautions: ["Maintain a balanced low-glycemic diet", "Regular physical activity", "Monitor blood glucose levels regularly"]
-  },
-  {
-    id: 2,
-    name: "Influenza Virus A/B",
-    common_name: "Seasonal Flu",
-    category: "Infectious",
-    risk_level: "Low",
-    transmission: "Airborne droplets (Coughing and sneezing)",
-    description: "An acute, highly contagious viral infection of the respiratory tract that spreads rapidly in seasonal waves worldwide.",
-    symptoms: ["High fever", "Dry cough", "Severe body aches", "Chills and sweating"],
-    precautions: ["Annual flu vaccination", "Frequent handwashing with soap", "Avoid close contact with infected individuals"]
-  },
-  {
-    id: 3,
-    name: "Hypertensive Heart Disease",
-    common_name: "High Blood Pressure",
-    category: "Chronic",
-    risk_level: "High",
-    transmission: "Non-communicable (Dietary and cardiovascular wear)",
-    description: "A cluster of medical complications including heart failure and ischemic heart disease caused by chronically elevated systemic blood pressure.",
-    symptoms: ["Headaches (especially in the morning)", "Shortness of breath", "Dizziness", "Chest pain"],
-    precautions: ["Reduce sodium (salt) dietary intake", "Manage emotional stress levels", "Take prescribed antihypertensive medications daily"]
-  }
-];
 
 const RISK_THEMES = {
   Low: "bg-emerald-50 text-emerald-700 border-emerald-200",
@@ -62,25 +27,98 @@ const RISK_THEMES = {
 
 export default function Disease() {
   // --- UI State Management ---
-  const [diseases] = useState<DiseaseData[]>(MOCK_DISEASES);
+  const [diseases, setDiseases] = useState<DiseaseData[]>([]);
   const [selectedDisease, setSelectedDisease] = useState<DiseaseData | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const navigate = useNavigate();
+
+  // --- Fetch Data From Backend ---
+  useEffect(() => {
+    const fetchDiseases = async () => {
+      try {
+        setLoading(true);
+        const response = await api.get("/disease/all");
+        
+        // Unwrapping the backend payload structure safely ({ data: diseases[] })
+        if (response.data && Array.isArray(response.data.data)) {
+          setDiseases(response.data.data);
+        } else if (Array.isArray(response.data)) {
+          setDiseases(response.data);
+        } else {
+          throw new Error("Unexpected API response layout structure.");
+        }
+        setError(null);
+      } catch (err: any) {
+        console.error("Error fetching medical data:", err);
+        setError(err.message || "Something went wrong while loading the disease index.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDiseases();
+  }, []);
+
+  // --- Normalizing Helper for PostgreSQL Text Array Formats ---
+  const getArrayFields = (fieldData: string[] | string | undefined | null): string[] => {
+    if (!fieldData) return [];
+    if (Array.isArray(fieldData)) return fieldData;
+    if (typeof fieldData === "string") {
+      // Strips PostgreSQL array characters: {"item1","item2"} -> ["item1", "item2"]
+      return fieldData.replace(/[{}" ]/g, "").split(",");
+    }
+    return [];
+  };
 
   // Search filter across disease names, categories, and symptoms
-  const filteredDiseases = diseases.filter(d => 
-    d.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    d.common_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    d.symptoms.some(s => s.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
-  const navigate = useNavigate();
+  const filteredDiseases = (Array.isArray(diseases) ? diseases : []).filter(d => {
+    const nameMatch = d.name?.toLowerCase().includes(searchQuery.toLowerCase());
+    const commonNameMatch = d.common_name?.toLowerCase().includes(searchQuery.toLowerCase());
+    const symptomsList = getArrayFields(d.symptoms).join(" ").toLowerCase();
+    const symptomMatch = symptomsList.includes(searchQuery.toLowerCase());
+    
+    return nameMatch || commonNameMatch || symptomMatch;
+  });
+
+  // --- Loading State Render ---
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center font-sans">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mb-4"></div>
+        <p className="text-slate-600 font-medium">Loading clinical profiles...</p>
+      </div>
+    );
+  }
+
+  // --- Error State Render ---
+  if (error) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center font-sans p-4">
+        <div className="bg-white border border-rose-100 rounded-2xl p-8 max-w-md text-center shadow-sm">
+          <p className="text-rose-600 font-bold text-lg mb-2">Connection Error</p>
+          <p className="text-slate-500 text-sm mb-6">{error}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm px-6 py-2.5 rounded-xl transition-all"
+          >
+            Retry Connection
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 py-8 px-4 md:px-8 font-sans">
-       <button 
-              onClick={() => navigate('/')}
-              className="w-10 h-10 rounded-full bg-slate-50 hover:bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-600 transition-colors"
-            >
-              <ArrowLeft size={20} />
-        </button>
+      <button 
+        onClick={() => navigate('/')}
+        className="w-10 h-10 rounded-full bg-slate-50 hover:bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-600 transition-colors mb-6"
+      >
+        <ArrowLeft size={20} />
+      </button>
       <div className="max-w-5xl mx-auto">
         
         {/* ── CASE 1: DISEASE ENCYCLOPEDIA DETAIL VIEW ── */}
@@ -98,17 +136,17 @@ export default function Disease() {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-6">
                 <div>
                   <span className="text-xs font-black tracking-widest text-indigo-600 uppercase bg-indigo-50 px-3 py-1 rounded-md">
-                    {selectedDisease.category} Condition
+                    {selectedDisease.category || "General"} Condition
                   </span>
                   <h2 className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight mt-2">
                     {selectedDisease.name}
                   </h2>
-                  <p className="text-slate-400 font-medium text-sm mt-0.5">Commonly known as: {selectedDisease.common_name}</p>
+                  <p className="text-slate-400 font-medium text-sm mt-0.5">Commonly known as: {selectedDisease.common_name || "N/A"}</p>
                 </div>
 
-                <div className={`border rounded-xl px-4 py-2 text-center shrink-0 ${RISK_THEMES[selectedDisease.risk_level]}`}>
+                <div className={`border rounded-xl px-4 py-2 text-center shrink-0 ${RISK_THEMES[selectedDisease.risk_level || "Low"]}`}>
                   <span className="text-[10px] font-black uppercase tracking-wider block opacity-70">Clinical Severity</span>
-                  <span className="text-base font-extrabold">{selectedDisease.risk_level} Risk</span>
+                  <span className="text-base font-extrabold">{selectedDisease.risk_level || "Low"} Risk</span>
                 </div>
               </div>
 
@@ -118,14 +156,14 @@ export default function Disease() {
                   <FileText size={16} className="text-slate-400" /> Pathological Description
                 </h4>
                 <p className="text-slate-600 text-sm leading-relaxed bg-slate-50/50 border border-slate-100 rounded-2xl p-4">
-                  {selectedDisease.description}
+                  {selectedDisease.description || "No clinical description updated yet for this system registry entry."}
                 </p>
               </div>
 
               {/* Transmission Matrix */}
               <div className="text-sm">
                 <span className="font-bold text-slate-700">Method of Spread / Development:</span>
-                <span className="text-slate-500 ml-2 font-medium">{selectedDisease.transmission}</span>
+                <span className="text-slate-500 ml-2 font-medium">{selectedDisease.transmission || "Non-communicable panel"}</span>
               </div>
 
               {/* Side-by-Side Symptoms & Precautions Grid */}
@@ -136,12 +174,15 @@ export default function Disease() {
                     <HeartPulse size={16} /> Diagnostic Symptoms
                   </h4>
                   <ul className="space-y-2">
-                    {selectedDisease.symptoms.map((symptom, idx) => (
+                    {getArrayFields(selectedDisease.symptoms).map((symptom, idx) => (
                       <li key={idx} className="flex items-start gap-2 text-sm text-slate-700 font-medium">
                         <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mt-2 shrink-0" />
                         {symptom}
                       </li>
                     ))}
+                    {getArrayFields(selectedDisease.symptoms).length === 0 && (
+                      <li className="text-slate-400 text-xs italic">Symptom lists currently checking validation.</li>
+                    )}
                   </ul>
                 </div>
 
@@ -151,12 +192,15 @@ export default function Disease() {
                     <Pill size={16} /> Preventive Measures
                   </h4>
                   <ul className="space-y-2">
-                    {selectedDisease.precautions.map((precaution, idx) => (
+                    {getArrayFields(selectedDisease.precautions).map((precaution, idx) => (
                       <li key={idx} className="flex items-start gap-2 text-sm text-slate-700 font-medium">
                         <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 mt-2 shrink-0" />
                         {precaution}
                       </li>
                     ))}
+                    {getArrayFields(selectedDisease.precautions).length === 0 && (
+                      <li className="text-slate-400 text-xs italic">No preventive guidance tags provided yet.</li>
+                    )}
                   </ul>
                 </div>
               </div>
@@ -199,13 +243,13 @@ export default function Disease() {
                   >
                     <div className="space-y-3">
                       <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-wider text-slate-400">
-                        <span>{disease.category}</span>
+                        <span>{disease.category || "General"}</span>
                         <span className={`px-2 py-0.5 rounded border ${
                           disease.risk_level === "High" ? "text-rose-600 border-rose-100 bg-rose-50/50" : 
                           disease.risk_level === "Medium" ? "text-amber-600 border-amber-100 bg-amber-50/50" : 
                           "text-emerald-600 border-emerald-100 bg-emerald-50/50"
                         }`}>
-                          {disease.risk_level} Risk
+                          {disease.risk_level || "Low"} Risk
                         </span>
                       </div>
 
@@ -213,12 +257,12 @@ export default function Disease() {
                         <h3 className="font-extrabold text-slate-800 text-base leading-snug group-hover:text-indigo-600 transition-colors line-clamp-1">
                           {disease.name}
                         </h3>
-                        <p className="text-xs text-slate-400 font-medium mt-0.5">AKA: {disease.common_name}</p>
+                        <p className="text-xs text-slate-400 font-medium mt-0.5">AKA: {disease.common_name || "N/A"}</p>
                       </div>
 
                       {/* Snippet preview of symptoms list */}
                       <p className="text-xs text-slate-500 font-medium line-clamp-2 pt-1">
-                        <span className="font-bold text-slate-600">Symptoms:</span> {disease.symptoms.join(", ")}
+                        <span className="font-bold text-slate-600">Symptoms:</span> {getArrayFields(disease.symptoms).join(", ") || "None listed"}
                       </p>
                     </div>
 

@@ -1,0 +1,34 @@
+services:
+  database:
+    image: postgres:16
+    ports:
+      -3306:3306
+    environment:
+      POSTGRES_USERNAME: postgres
+      POSTGRES_PASSWORD: sectrts
+      POSTGRES_DB: medi
+    volumes:
+      -medi_data:/etc/postgres/data
+  backend:
+    image: medi-backend
+    ports:
+      -9876:9876
+    healthcheck:
+      test: ["curl", "http://"]
+      interval: 1m30s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      serviceName: database
+      condition: healthy
+  frontend:
+    image: medi-frontend
+    ports:
+      -8080:80
+    depends_on:
+      serviceName: backend
+      condition: healthy
+
+secrets:
+  

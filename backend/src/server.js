@@ -38,9 +38,9 @@ app.get('/api', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/user',authVerify, userRoutes);
 app.use('/api/doctor', authVerify, doctorRoutes);
-app.use('/api/aichat', authVerify, aiRoutes);
-app.use('/api/hospital', authVerify, hospitalRoutes);
-app.use('/api/disease', authVerify, diseaseRoutes);
+app.use('/api/chat', aiRoutes);
+app.use('/api/hospital', hospitalRoutes);
+app.use('/api/disease', diseaseRoutes);
 app.use('/', (req, res) => {
   res.status(200).sendFile(path.join(__dirname, '../../frontend/dist', 'index.html'));
 });

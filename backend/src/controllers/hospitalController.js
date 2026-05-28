@@ -5,7 +5,7 @@ export const getHospitals = async (req, res) => {
         // Implementation for fetching all hospitals
         const response = await pool.query('SELECT * FROM "Hospital"');
         const hospitals = response.rows;
-        res.json(hospitals);
+        res.json({data: hospitals});
     } catch (err) {
         console.error('Error fetching hospitals', err);
         res.status(500).json({ error: 'Internal server error' });

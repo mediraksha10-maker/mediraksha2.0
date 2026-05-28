@@ -1,6 +1,9 @@
-import { useState, ChangeEvent } from "react";
+import React, { useState, useEffect } from "react";
+import type { ChangeEvent } from 'react'
 import { User, Mail, Phone, Calendar, Venus, ArrowLeft, LogOut, Pencil, Check, X } from "lucide-react";
 import { useNavigate } from "react-router";
+import api from '../api/Api'; // Importing your configured Axios instance
+
 /* ── Types ── */
 interface UserData {
   name: string;
@@ -16,15 +19,6 @@ interface FormData {
   gender: string;
   number: string;
 }
-
-/* ── Mock Initial Data for Preview ── */
-const MOCK_USER: UserData = {
-  name: "Jane Doe",
-  email: "janedoe@example.com",
-  age: 28,
-  gender: "female",
-  number: "+1 (555) 019-2834",
-};
 
 /* ── Field row (view mode) ── */
 function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
@@ -46,47 +40,97 @@ const inputClass =
 const labelClass = "block text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-1.5";
 
 export default function MyDetail() {
-  // Initialized with mock data directly instead of loading via API
-  const [user, setUser]       = useState<UserData | null>(MOCK_USER);
-  const [loading]             = useState<boolean>(false); 
+  const [user, setUser]       = useState<UserData | null>(null);
+  const [loading, setLoading] = useState<boolean>(true); 
   const [editing, setEditing] = useState<boolean>(false);
   const [saving, setSaving]   = useState<boolean>(false);
   
   const [formData, setFormData] = useState<FormData>({
-    name:   MOCK_USER.name,
-    age:    String(MOCK_USER.age),
-    gender: MOCK_USER.gender,
-    number: MOCK_USER.number,
+    name:   "",
+    age:    "",
+    gender: "",
+    number: "",
   });
+
+  const navigate = useNavigate();
+
+  // --- Fetch Profile Details on Load ---
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      try {
+        setLoading(true);
+        const response = await api.get("/user/info/detail");
+        
+        if (response.data && response.data.success) {
+          const profileData = response.data;
+          setUser(profileData);
+          
+          // Seed the form fields with fetched data
+          setFormData({
+            name:   profileData.name || "",
+            age:    profileData.age ? String(profileData.age) : "",
+            gender: profileData.gender || "",
+            number: profileData.number || "",
+          });
+        }
+      } catch (error: any) {
+        console.error("Error retrieving user context profiles:", error);
+        
+        // Handle Protected Route Failures: Redirect unauthenticated requests back to /auth page
+        const errorMessage = error.response?.data?.message || "";
+        if (error.response?.status === 401 || errorMessage.toLowerCase().includes("token")) {
+          alert("Session expired or missing credentials. Redirecting to login...");
+          navigate("/auth");
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchUserProfile();
+  }, [navigate]);
 
   const handleChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>): void => {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
+  // --- Handle Profile Update Submission (PATCH) ---
   const handleSave = async (): Promise<void> => {
     setSaving(true);
-    
-    // Simulate a brief network delay to view the "Saving..." state UI
-    setTimeout(() => {
-      if (user) {
-        setUser({
-          ...user,
-          name: formData.name,
-          age: formData.age,
-          gender: formData.gender,
-          number: formData.number,
-        });
+    try {
+      const response = await api.patch("/user/info/update", {
+        name: formData.name,
+        number: formData.number,
+        age: formData.age ? parseInt(formData.age, 10) : null,
+        gender: formData.gender
+      });
+
+      if (response.data && response.data.success) {
+        setUser(response.data.data);
+        setEditing(false);
       }
+    } catch (error: any) {
+      console.error("Failed to update profile changes:", error);
+      const errorMessage = error.response?.data?.message || "Something went wrong while saving changes.";
+      
+      if (error.response?.status === 401) {
+        navigate("/auth");
+      } else {
+        alert(errorMessage);
+      }
+    } finally {
       setSaving(false);
-      setEditing(false);
-    }, 600);
+    }
   };
 
   const handleLogout = (): void => {
-    alert("Logout clicked (API logic bypassed)");
+    // Basic structural frontend cleanup sequence
+    alert("Logging out...");
+    localStorage.removeItem("token"); // Remove storage strings if your app uses local token strategies
+    navigate("/auth");
   };
 
-  /* ── Loading ── */
+  /* ── Loading State ── */
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-50">
@@ -97,17 +141,18 @@ export default function MyDetail() {
 
   if (!user) return null;
 
-  /* ── Avatar initials ── */
-  const initials = user.name.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase();
-  const navigate = useNavigate();
+  /* ── Avatar initials generator ── */
+  const initials = user.name
+    ? user.name.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase()
+    : "??";
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center px-4 py-10">
 
-      {/* Card */}
+      {/* Main Structural Card Container */}
       <div className="w-full max-w-md bg-white rounded-3xl shadow-xl shadow-slate-200/60 overflow-hidden">
 
-        {/* Header band */}
+        {/* Top Header Background Panel */}
         <div className="bg-linear-to-br from-indigo-600 to-violet-600 px-6 pt-8 pb-14 relative">
           <button
             onClick={() => navigate('/')}
@@ -125,37 +170,37 @@ export default function MyDetail() {
           <p className="text-center text-white font-black text-xl tracking-tight">{user.name}</p>
         </div>
 
-        {/* Avatar overlap */}
+        {/* Avatar badge graphic offset layer */}
         <div className="flex justify-center -mt-10 mb-2">
           <div className="w-20 h-20 rounded-2xl bg-white shadow-lg border-4 border-white flex items-center justify-center text-2xl font-black text-indigo-600">
-            {initials || "??"}
+            {initials}
           </div>
         </div>
 
-        {/* Body */}
+        {/* Structural Info/Form Body Block */}
         <div className="px-6 pb-6">
 
-          {/* ── VIEW MODE ── */}
+          {/* ── CONDITIONAL RENDER: PROFILE VIEW MODE ── */}
           {!editing && (
             <>
               <div className="mb-4">
                 <InfoRow icon={<User size={16} />}     label="Full Name" value={user.name} />
                 <InfoRow icon={<Mail size={16} />}     label="Email"     value={user.email} />
                 <InfoRow icon={<Phone size={16} />}    label="Phone"     value={user.number} />
-                <InfoRow icon={<Calendar size={16} />} label="Age"       value={String(user.age)} />
+                <InfoRow icon={<Calendar size={16} />} label="Age"       value={user.age ? String(user.age) : "—"} />
                 <InfoRow icon={<Venus size={16} />}    label="Gender"    value={user.gender} />
               </div>
 
               <button
                 onClick={() => setEditing(true)}
-                className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition-all"
+                className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition-all cursor-pointer"
               >
                 <Pencil size={16} /> Edit Profile
               </button>
             </>
           )}
 
-          {/* ── EDIT MODE ── */}
+          {/* ── CONDITIONAL RENDER: PROFILE EDITING INTERACTIVE MODE ── */}
           {editing && (
             <>
               <div className="space-y-4 mb-6">
@@ -165,7 +210,7 @@ export default function MyDetail() {
                 </div>
 
                 <div>
-                  <label className={labelClass}>Email</label>
+                  <label className={labelClass}>Email Address</label>
                   <input
                     type="email" value={user.email} disabled
                     className={`${inputClass} opacity-50 cursor-not-allowed`}
@@ -198,13 +243,13 @@ export default function MyDetail() {
                 <button
                   onClick={handleSave}
                   disabled={saving}
-                  className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-bold py-3 rounded-xl transition-all"
+                  className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-bold py-3 rounded-xl transition-all cursor-pointer"
                 >
                   <Check size={16} /> {saving ? "Saving..." : "Save"}
                 </button>
                 <button
                   onClick={() => setEditing(false)}
-                  className="flex-1 flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-xl transition-all"
+                  className="flex-1 flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-xl transition-all cursor-pointer"
                 >
                   <X size={16} /> Cancel
                 </button>

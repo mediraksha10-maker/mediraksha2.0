@@ -5,7 +5,7 @@ export const getDiseases = async (req, res) => {
         // Implementation for fetching all diseases
         const response = await pool.query('SELECT * FROM "Disease"');
         const diseases = response.rows;
-        res.json(diseases);
+        res.json({data:diseases});
     } catch (err) {
         console.error('Error fetching diseases', err);
         res.status(500).json({ error: 'Internal server error' });

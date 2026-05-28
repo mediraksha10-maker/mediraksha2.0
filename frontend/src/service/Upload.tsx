@@ -1,4 +1,4 @@
-import { useState, useEffect, ChangeEvent } from 'react';
+import { useState, useEffect, type ChangeEvent } from 'react';
 import { 
   ArrowLeft, Upload, FileText, Trash2, 
   Eye, FileUp, Shield, Tag, Info 

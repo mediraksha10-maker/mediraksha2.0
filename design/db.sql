@@ -11,7 +11,7 @@ CREATE TYPE report_category_enum AS ENUM ('lab_report', 'prescription', 'scan', 
 -- ============================================================================
 -- Capitalize for realtion name, camelCase for attributes
 -- Doctor Table
-CREATE TABLE Doctor (
+CREATE TABLE "Doctor" (
     "id" SERIAL PRIMARY KEY,
     "name" VARCHAR NOT NULL,
     "email" VARCHAR UNIQUE NOT NULL,
@@ -26,7 +26,7 @@ CREATE TABLE Doctor (
 );
 
 -- User Table
-CREATE TABLE User (
+CREATE TABLE "User" (
     "id" SERIAL PRIMARY KEY,
     "name" VARCHAR NOT NULL,
     "email" VARCHAR UNIQUE NOT NULL,
@@ -40,7 +40,7 @@ CREATE TABLE User (
 );
 
 -- Slot Table
-CREATE TABLE Slot (
+CREATE TABLE "Slot" (
     "id" SERIAL PRIMARY KEY,
     "userId" INTEGER,
     "doctorId" INTEGER NOT NULL,
@@ -51,7 +51,7 @@ CREATE TABLE Slot (
 );
 
 -- Appointment Table
-CREATE TABLE Appointment (
+CREATE TABLE "Appointment" (
     "id" SERIAL PRIMARY KEY,
     "userId" INTEGER NOT NULL,
     "doctorId" INTEGER NOT NULL,
@@ -66,7 +66,7 @@ CREATE TABLE Appointment (
 );
 
 -- Report Table
-CREATE TABLE Report (
+CREATE TABLE "Report" (
     "id" SERIAL PRIMARY KEY,
     "userId" INTEGER NOT NULL,
     "uploadedBy" VARCHAR,
@@ -82,7 +82,7 @@ CREATE TABLE Report (
 );
 
 -- Hospital Table
-CREATE TABLE Hospital (
+CREATE TABLE "Hospital" (
     "id" SERIAL PRIMARY KEY,
     "name" VARCHAR NOT NULL,
     "doctorId" INTEGER,
@@ -94,7 +94,7 @@ CREATE TABLE Hospital (
 );
 
 -- Diseases Table
-CREATE TABLE Disease (
+CREATE TABLE "Disease" (
     "id" SERIAL PRIMARY KEY,
     "code" INTEGER UNIQUE,
     "name" VARCHAR NOT NULL,

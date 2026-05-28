@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef, ChangeEvent } from "react";
+import React, { useState, useEffect, useRef, type ChangeEvent } from "react";
 import { Bot, ArrowLeft, Send, Sparkles, User, RefreshCw } from "lucide-react";
 import { useNavigate } from "react-router";
+import api from '../api/Api'; // Importing your configured Axios instance
 
 /* ---------------- TYPES ---------------- */
 interface Message {
@@ -28,6 +29,7 @@ export default function Chat() {
   const [isTyping, setIsTyping] = useState<boolean>(false);
   
   const chatEndRef = useRef<HTMLDivElement | null>(null);
+  const navigate = useNavigate();
 
   // Load initial welcome script
   useEffect(() => {
@@ -65,14 +67,16 @@ export default function Chat() {
     }, 500);
   };
 
-  const handleSendMessage = (e: React.FormEvent): void => {
+  const handleSendMessage = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
-    if (!inputValue.trim()) return;
+    const cleanInput = inputValue.trim();
+    if (!cleanInput) return;
 
+    // 1. Construct and append user message element to the chat thread
     const userMessage: Message = {
       id: `msg-${Date.now()}-user`,
       sender: "user",
-      text: inputValue.trim(),
+      text: cleanInput,
       timestamp: new Date()
     };
 
@@ -80,19 +84,37 @@ export default function Chat() {
     setInputValue("");
     setIsTyping(true);
 
-    // Simulate an AI responding to the symptoms text input match
-    setTimeout(() => {
-      const mockBotResponse: Message = {
+    try {
+      // 2. Perform POST request to your backend API route
+      // Request Body Schema matches: { "message": "your type" }
+      const response = await api.post("/chat", { message: cleanInput });
+      
+      // Response Parsing Schema matches: { "response": "by ai" }
+      const aiResponseText = response.data?.response || "I could not process that request. Please try rephrasing your symptoms.";
+
+      const botMessage: Message = {
         id: `msg-${Date.now()}-bot`,
         sender: "bot",
-        text: "Thank you for sharing those details. Based on your description, this looks like a preliminary general health issue. I recommend keeping track of your body temperature, staying hydrated with fluids, and arranging a routine consultation with a healthcare practitioner if symptoms change.",
+        text: aiResponseText,
         timestamp: new Date()
       };
-      setMessages((prev) => [...prev, mockBotResponse]);
+
+      setMessages((prev) => [...prev, botMessage]);
+    } catch (err: any) {
+      console.error("AI Chat Assistant Endpoint Error:", err);
+      
+      // Inject a user-friendly diagnostic message inside the thread if server drops
+      const errorMessage: Message = {
+        id: `msg-${Date.now()}-error`,
+        sender: "bot",
+        text: "⚠️ Connection error: Failed to reach the diagnostics server. Please check your network and try re-submitting.",
+        timestamp: new Date()
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
       setIsTyping(false);
-    }, 1500);
+    }
   };
-  const navigate = useNavigate();
 
   return (
     <div className="flex flex-col h-screen bg-slate-50 font-sans">
@@ -134,6 +156,7 @@ export default function Chat() {
       <div className="flex-1 overflow-y-auto px-4 py-6 md:p-8 space-y-6 max-w-4xl w-full mx-auto">
         {messages.map((msg) => {
           const isBot = msg.sender === "bot";
+          const isErrorMessage = msg.text.startsWith("⚠️");
           return (
             <div 
               key={msg.id} 
@@ -152,7 +175,9 @@ export default function Chat() {
               <div className="space-y-1">
                 <div className={`rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-xs border ${
                   isBot 
-                    ? "bg-white text-slate-800 border-slate-100 rounded-tl-none" 
+                    ? isErrorMessage 
+                      ? "bg-rose-50 text-rose-800 border-rose-100 rounded-tl-none font-medium" 
+                      : "bg-white text-slate-800 border-slate-100 rounded-tl-none" 
                     : "bg-indigo-600 text-white border-transparent rounded-tr-none font-medium"
                 }`}>
                   {msg.text}

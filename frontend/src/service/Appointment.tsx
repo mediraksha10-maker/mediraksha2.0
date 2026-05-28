@@ -1,4 +1,4 @@
-import React, { useState, useEffect, ChangeEvent } from "react";
+import { useState, useEffect, type ChangeEvent } from "react";
 import { ArrowLeft, X, Search, Calendar as CalIcon, Clock, User, Plus, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { useNavigate } from "react-router";
 
@@ -205,7 +205,7 @@ export default function AppointmentCalendar() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           
           {/* ── Main Canvas View Placeholder Calendar ── */}
-          <div className="lg:col-span-8 bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between min-h-[620px]">
+          <div className="lg:col-span-8 bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between min-h-155">
             <div>
               <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-6">
                 <div className="flex gap-1">
