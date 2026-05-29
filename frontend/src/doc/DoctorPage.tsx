@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { User, LayoutDashboard, Calendar, Users, LogOut, Menu, X, CheckCircle } from "lucide-react";
 import { useNavigate } from "react-router";
 import api from "../api/Api";
@@ -15,6 +15,31 @@ export default function DoctorPage() {
   const [activeTab, setActiveTab] = useState<DashboardTab>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const fetchDoctorProfile = async () => {
+      try {
+        const response = await api.get("/doctor/info/detail");
+
+        if (response.data && response.data.success) {
+          const data = response.data.data;
+          if(!data) {
+            navigate('/auth')
+          }
+        }
+      } catch (error: any) {
+        console.error("Error retrieving doctor profile:", error);
+
+        const errorMessage = error.response?.data?.message || "";
+        if (error.response?.status === 401 || errorMessage.toLowerCase().includes("token")) {
+          alert("Session expired or missing credentials. Redirecting to login...");
+          navigate("/auth");
+        }
+      }
+    };
+
+    fetchDoctorProfile();
+  }, [navigate]);
 
   const handleLogout = async (): Promise<void> => {
     try {

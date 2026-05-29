@@ -76,7 +76,18 @@ export default function Navbar() {
           >
             Services
           </Link>
+          <Link
+            to="/doctor"
+            className={`px-4 py-2 rounded-xl font-medium transition-all ${
+              isActive("/doctor")
+                ? "bg-indigo-50 text-indigo-600"
+                : "hover:bg-slate-50 text-slate-600"
+            }`}
+          >
+            Doctor
+          </Link>
         </div>
+        
 
         {/* --- RIGHT: Profile --- */}
         <Link
