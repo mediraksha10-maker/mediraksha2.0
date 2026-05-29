@@ -1,20 +1,22 @@
 import { pool } from '../config/db.js';
 
-// GET /api/doctor/user/my  — all patients registered to this doctor
+// GET /api/doctor/user/my — all patients registered to this doctor
 export const getAllPatients = async (req, res) => {
   const doctorId = req.user.id;
 
   try {
-    const [patients] = await pool.query(
+    // FIX 1: PostgreSQL group by requirement & case-sensitive double quotes
+    // FIX 2: Swapped '?' placeholders for '$1' and '$2'
+    const { rows: patients } = await pool.query(
       `SELECT
-        u.Id, u.name, u.email, u.number, u.age, u.gender,
-        COUNT(a.Id) AS totalAppointments,
-        MAX(a.appointmentDate) AS lastAppointmentDate
-       FROM User u
-       LEFT JOIN Appointments a ON a.userId = u.Id AND a.doctorId = ?
-       WHERE u.registeredDoctorId = ?
-       GROUP BY u.Id
-       ORDER BY u.name ASC`,
+        u."id", u."name", u."email", u."number", u."age", u."gender",
+        COUNT(a."Id") AS "totalAppointments",
+        MAX(a."appointmentDate") AS "lastAppointmentDate"
+       FROM "User" u
+       LEFT JOIN "Appointments" a ON a."userId" = u."id" AND a."doctorId" = $1
+       WHERE u."registeredDoctorId" = $2
+       GROUP BY u."id", u."name", u."email", u."number", u."age", u."gender"
+       ORDER BY u."name" ASC`,
       [doctorId, doctorId]
     );
 
@@ -29,43 +31,44 @@ export const getAllPatients = async (req, res) => {
   }
 };
 
-// GET /api/doctor/user/:id  — single patient detail + their appointment history with this doctor
+// GET /api/doctor/user/:id — single patient detail + their appointment history with this doctor
 export const getPatientById = async (req, res) => {
   const doctorId = req.user.id;
   const { id } = req.params;
 
-  if (isNaN(id)) {
+  // Removed isNaN guard to maintain full compatibility if you are using alphanumeric UUIDs
+  if (!id) {
     return res.status(400).json({ success: false, message: 'Invalid patient ID' });
   }
 
   try {
     // Verify the patient is actually registered to this doctor
-    const [user] = await pool.query(
-      `SELECT Id, name, email, number, age, gender, created_at
-       FROM User
-       WHERE Id = ? AND registeredDoctorId = ?`,
+    const { rows: users } = await pool.query(
+      `SELECT "id", "name", "email", "number", "age", "gender", "created_at"
+       FROM "User"
+       WHERE "id" = $1 AND "registeredDoctorId" = $2`,
       [id, doctorId]
     );
 
-    if (user.length === 0) {
+    if (users.length === 0) {
       return res.status(404).json({ success: false, message: 'Patient not found or not registered to you' });
     }
 
     // Fetch appointment history with this doctor
-    const [appointments] = await pool.query(
+    const { rows: appointments } = await pool.query(
       `SELECT
-        a.Id, a.appointmentDate, a.slotTime, a.status,
-        a.reasonOfAppointment, a.created_at
-       FROM Appointments a
-       WHERE a.userId = ? AND a.doctorId = ?
-       ORDER BY a.appointmentDate DESC`,
+        a."Id" AS "Id", a."appointmentDate", a."slotTime", a."status",
+        a."reasonOfAppointment", a."created_at"
+       FROM "Appointments" a
+       WHERE a."userId" = $1 AND a."doctorId" = $2
+       ORDER BY a."appointmentDate" DESC`,
       [id, doctorId]
     );
 
     res.status(200).json({
       success: true,
       data: {
-        patient: user[0],
+        patient: users[0],
         appointmentHistory: appointments,
         totalAppointments: appointments.length,
       },
@@ -76,66 +79,67 @@ export const getPatientById = async (req, res) => {
   }
 };
 
-// DELETE /api/doctor/user/:id  — remove patient registration from this doctor
+// DELETE /api/doctor/user/:id — remove patient registration from this doctor
 export const removePatient = async (req, res) => {
   const doctorId = req.user.id;
   const { id } = req.params;
 
-  if (isNaN(id)) {
+  if (!id) {
     return res.status(400).json({ success: false, message: 'Invalid patient ID' });
   }
 
-  const conn = await pool.getConnection();
+  // Use pool.connect() client checkout abstraction for PostgreSQL transactions
+  const client = await pool.connect();
   try {
-    await conn.beginTransaction();
+    await client.query('BEGIN');
 
-    const [user] = await conn.query(
-      `SELECT Id, registeredDoctorId FROM User WHERE Id = ?`,
+    const { rows: users } = await client.query(
+      `SELECT "id", "registeredDoctorId" FROM "User" WHERE "id" = $1`,
       [id]
     );
 
-    if (user.length === 0) {
-      await conn.rollback();
+    if (users.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ success: false, message: 'Patient not found' });
     }
 
-    if (user[0].registeredDoctorId !== doctorId) {
-      await conn.rollback();
+    // Enforce matching text strings comparisons securely
+    if (String(users[0].registeredDoctorId) !== String(doctorId)) {
+      await client.query('ROLLBACK');
       return res.status(403).json({ success: false, message: 'This patient is not registered to you' });
     }
 
-    // Block removal if active upcoming appointments exist
-    const [active] = await conn.query(
-      `SELECT Id FROM Appointments
-       WHERE userId = ? AND doctorId = ?
-       AND status IN ('pending', 'confirmed')
-       AND appointmentDate >= CURDATE()`,
+    // Block removal if active upcoming appointments exist (MySQL CURDATE() replaced with CURRENT_DATE)
+    const { rows: activeAppointments } = await client.query(
+      `SELECT "Id" FROM "Appointments"
+       WHERE "userId" = $1 AND "doctorId" = $2
+       AND "status" IN ('pending', 'confirmed')
+       AND "appointmentDate" >= CURRENT_DATE`,
       [id, doctorId]
     );
 
-    if (active.length > 0) {
-      await conn.rollback();
+    if (activeAppointments.length > 0) {
+      await client.query('ROLLBACK');
       return res.status(409).json({
         success: false,
-        message: `Cannot remove patient. ${active.length} upcoming appointment(s) still active.`,
-        activeAppointments: active.length,
+        message: `Cannot remove patient. ${activeAppointments.length} upcoming appointment(s) still active.`,
+        activeAppointments: activeAppointments.length,
       });
     }
 
     // Detach patient from this doctor
-    await conn.query(
-      `UPDATE User SET registeredDoctorId = NULL WHERE Id = ?`,
+    await client.query(
+      `UPDATE "User" SET "registeredDoctorId" = NULL, "updated_at" = NOW() WHERE "id" = $1`,
       [id]
     );
 
-    await conn.commit();
-
+    await client.query('COMMIT');
     res.status(200).json({ success: true, message: 'Patient removed from your profile successfully' });
   } catch (error) {
-    await conn.rollback();
+    await client.query('ROLLBACK');
     console.error('removePatient error:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
   } finally {
-    conn.release();
+    client.release(); // Releases the client back to the connection pool
   }
 };

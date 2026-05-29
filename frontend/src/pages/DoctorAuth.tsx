@@ -27,7 +27,7 @@ const DoctorAuth = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      const response = await api.post('/doctor/signup', {
+      const response = await api.post('/auth/doctor/signup', {
         name,
         email,
         number,
@@ -59,14 +59,14 @@ const DoctorAuth = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      const response = await api.post('/doctor/login', {
+      const response = await api.post('/auth/doctor/login', {
         email: loginEmail,
         password: loginPassword,
       });
 
       if (response.status === 200) {
         toast.success("Login successful!");
-        navigate("/doctor-dashboard");
+        navigate("/doctor");
       } else {
         toast.error("Login failed. Please try again.");
       }

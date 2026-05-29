@@ -6,18 +6,19 @@ export const getDoctorDetail = async (req, res) => {
   const doctorId = req.user.id;
 
   try {
-    const [doctor] = await pool.query(
-      `SELECT Id, name, email, number, age, gender, hospital, speciality, created_at, updated_at
-       FROM Doctor
-       WHERE Id = ?`,
+    // PostgreSQL uses .query() which returns an object containing a 'rows' array
+    const result = await pool.query(
+      `SELECT "id", "name", "email", "number", "age", "gender", "hospital", "speciality", "created_at", "updated_at"
+       FROM "Doctor"
+       WHERE "id" = $1`,
       [doctorId]
     );
 
-    if (doctor.length === 0) {
+    if (result.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Doctor not found' });
     }
 
-    res.status(200).json({ success: true, data: doctor[0] });
+    res.status(200).json({ success: true, data: result.rows[0] });
   } catch (error) {
     console.error('getDoctorDetail error:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
@@ -53,22 +54,36 @@ export const updateDoctorDetail = async (req, res) => {
   }
 
   try {
-    const fields = Object.keys(updates).map(k => `${k} = ?`).join(', ');
-    const values = [...Object.values(updates), doctorId];
+    const values = [];
+    const assignments = [];
+    let paramIndex = 1;
+
+    // Dynamically build the assignment structure ($1, $2, etc.) for PostgreSQL
+    for (const [key, value] of Object.entries(updates)) {
+      assignments.push(`"${key}" = $${paramIndex}`);
+      values.push(value);
+      paramIndex++;
+    }
+
+    // Add doctorId as the final variable constraint
+    values.push(doctorId);
+    const whereClauseIndex = paramIndex; 
 
     await pool.query(
-      `UPDATE Doctor SET ${fields}, updated_at = NOW() WHERE Id = ?`,
+      `UPDATE "Doctor" 
+       SET ${assignments.join(', ')}, "updated_at" = NOW() 
+       WHERE "id" = $${whereClauseIndex}`,
       values
     );
 
     // Return fresh record (exclude password)
-    const [updated] = await pool.query(
-      `SELECT Id, name, email, number, age, gender, hospital, speciality, updated_at
-       FROM Doctor WHERE Id = ?`,
+    const result = await pool.query(
+      `SELECT "id", "name", "email", "number", "age", "gender", "hospital", "speciality", "updated_at"
+       FROM "Doctor" WHERE "id" = $1`,
       [doctorId]
     );
 
-    res.status(200).json({ success: true, message: 'Profile updated successfully', data: updated[0] });
+    res.status(200).json({ success: true, message: 'Profile updated successfully', data: result.rows[0] });
   } catch (error) {
     console.error('updateDoctorDetail error:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
@@ -79,50 +94,51 @@ export const updateDoctorDetail = async (req, res) => {
 export const deleteDoctorAccount = async (req, res) => {
   const doctorId = req.user.id;
 
-  const conn = await pool.getConnection();
+  // For modern 'pg' pools, transaction controls are handled via client checkouts
+  const client = await pool.connect();
   try {
-    await conn.beginTransaction();
+    await client.query('BEGIN');
 
-    // Block deletion if active upcoming appointments exist
-    const [active] = await conn.query(
-      `SELECT Id FROM Appointments
-       WHERE doctorId = ? AND status IN ('pending', 'confirmed')
-       AND appointmentDate >= CURDATE()`,
+    // Block deletion if active upcoming appointments exist (Fixed CURDATE() to CURRENT_DATE)
+    const active = await client.query(
+      `SELECT "id" FROM "Appointments"
+       WHERE "doctorId" = $1 AND "status" IN ('pending', 'confirmed')
+       AND "appointmentDate" >= CURRENT_DATE`,
       [doctorId]
     );
 
-    if (active.length > 0) {
-      await conn.rollback();
+    if (active.rows.length > 0) {
+      await client.query('ROLLBACK');
       return res.status(409).json({
         success: false,
-        message: `Cannot delete account. ${active.length} upcoming appointment(s) still pending. Resolve them first.`,
+        message: `Cannot delete account. ${active.rows.length} upcoming appointment(s) still pending. Resolve them first.`,
       });
     }
 
     // Detach any users who had this doctor registered
-    await conn.query(
-      `UPDATE User SET registeredDoctorId = NULL WHERE registeredDoctorId = ?`,
+    await client.query(
+      `UPDATE "User" SET "registeredDoctorId" = NULL WHERE "registeredDoctorId" = $1`,
       [doctorId]
     );
 
     // Free all slots
-    await conn.query(`DELETE FROM Slots WHERE doctorId = ?`, [doctorId]);
+    await client.query(`DELETE FROM "Slots" WHERE "doctorId" = $1`, [doctorId]);
 
     // Delete all appointments (historical)
-    await conn.query(`DELETE FROM Appointments WHERE doctorId = ?`, [doctorId]);
+    await client.query(`DELETE FROM "Appointments" WHERE "doctorId" = $1`, [doctorId]);
 
     // Delete doctor
-    await conn.query(`DELETE FROM Doctor WHERE Id = ?`, [doctorId]);
+    await client.query(`DELETE FROM "Doctor" WHERE "id" = $1`, [doctorId]);
 
-    await conn.commit();
+    await client.query('COMMIT');
 
     res.clearCookie('token');
     res.status(200).json({ success: true, message: 'Doctor account deleted successfully' });
   } catch (error) {
-    await conn.rollback();
+    await client.query('ROLLBACK');
     console.error('deleteDoctorAccount error:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
   } finally {
-    conn.release();
+    client.release();
   }
 };
