@@ -4,15 +4,17 @@ import {
   Eye, FileUp, Shield, Tag, Info 
 } from "lucide-react";
 import { useNavigate } from 'react-router';
+import api from '../api/Api';
 
 /* ── Type Definitions ── */
+// FIX 3: Interface updated to match real backend response field names
 interface MedicalFile {
-  _id: string;
+  id: string;
   title: string;
-  filename: string;
+  originalFileName: string;
   category: string;
   visibility: 'private' | 'doctor';
-  createdAt: string;
+  created_at: string;
 }
 
 interface MessageState {
@@ -21,34 +23,6 @@ interface MessageState {
 }
 
 type PreviewType = 'image' | 'pdf' | 'other' | null;
-
-/* ── Mock Initial Stored Records ── */
-const MOCK_FILES: MedicalFile[] = [
-  {
-    _id: "rec_01",
-    title: "CBC & Lipid Profile Test",
-    filename: "blood_report.pdf",
-    category: "LAB",
-    visibility: "private",
-    createdAt: "2026-05-15T08:30:00.000Z"
-  },
-  {
-    _id: "rec_02",
-    title: "Lumbar Spine X-Ray",
-    filename: "xray_spine.jpg",
-    category: "SCAN",
-    visibility: "doctor",
-    createdAt: "2026-04-22T14:15:00.000Z"
-  },
-  {
-    _id: "rec_03",
-    title: "Amoxicillin Prescription",
-    filename: "rx_dr_smith.png",
-    category: "PRESCRIPTION",
-    visibility: "doctor",
-    createdAt: "2026-05-20T11:05:00.000Z"
-  }
-];
 
 export default function UploadReport() {
   // --- Form State ---
@@ -63,73 +37,135 @@ export default function UploadReport() {
   const [previewFile, setPreviewFile] = useState<string | null>(null);
   const [previewType, setPreviewType] = useState<PreviewType>(null);
   const [isUploading, setIsUploading] = useState<boolean>(false);
+  // FIX 5: Added loading + error state for initial fetch
+  const [isFetching, setIsFetching] = useState<boolean>(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
-  // Load local dummy data on mount
+  const navigate = useNavigate();
+
+  const showMessage = (text: string, type: 'success' | 'error', duration = 4000) => {
+    setMessage({ text, type });
+    setTimeout(() => setMessage(null), duration);
+  };
+
+  // FIX 1: Replaced mock data load with real GET /api/user/report/all call
   useEffect(() => {
-    setFiles(MOCK_FILES);
-  }, []);
+    const fetchReports = async () => {
+      try {
+        setIsFetching(true);
+        setFetchError(null);
+        const response = await api.get('/user/report/all');
+        if (response.data?.success) {
+          setFiles(response.data.data);
+        }
+      } catch (error: any) {
+        console.error('Error fetching reports:', error);
+        const status = error.response?.status;
+        if (status === 401) {
+          navigate('/auth');
+        } else {
+          setFetchError('Failed to load your medical records. Please try again.');
+        }
+      } finally {
+        setIsFetching(false);
+      }
+    };
+
+    fetchReports();
+  }, [navigate]);
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>): void => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) setFile(selectedFile);
   };
 
-  const handleUpload = (): void => {
+  // FIX 1 & 2: Replaced setTimeout simulation with real POST using FormData (multipart/form-data)
+  const handleUpload = async (): Promise<void> => {
     if (!file || !title) {
-      setMessage({ text: 'Please provide a title and select a file', type: 'error' });
+      showMessage('Please provide a title and select a file', 'error');
       return;
     }
 
     setIsUploading(true);
+    try {
+      // FIX 2: Must use FormData — sending a File object requires multipart encoding,
+      // not JSON. axios will auto-set Content-Type: multipart/form-data with boundary.
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('title', title);
+      formData.append('category', category);
+      formData.append('visibility', visibility);
 
-    // Simulate Network Request Delay for UI Feedback Loop
-    setTimeout(() => {
-      const newRecord: MedicalFile = {
-        _id: `rec_${Date.now()}`,
-        title: title,
-        filename: file.name,
-        category: category,
-        visibility: visibility,
-        createdAt: new Date().toISOString()
-      };
+      const response = await api.post('/user/report/upload', formData);
 
-      setFiles((prev) => [newRecord, ...prev]);
-      setMessage({ text: 'Medical record uploaded and encrypted successfully!', type: 'success' });
-      
-      // Reset Form State
-      setFile(null);
-      setTitle('');
-      setCategory('LAB');
-      setVisibility('private');
+      if (response.data?.success) {
+        // Prepend new record to the top of the list
+        setFiles((prev) => [response.data.data, ...prev]);
+        showMessage('Medical record uploaded and encrypted successfully!', 'success');
+
+        // Reset form
+        setFile(null);
+        setTitle('');
+        setCategory('LAB');
+        setVisibility('private');
+        // Reset file input element visually
+        const fileInput = document.getElementById('file-upload') as HTMLInputElement;
+        if (fileInput) fileInput.value = '';
+      }
+    } catch (error: any) {
+      console.error('Upload failed:', error);
+      const errorMessage = error.response?.data?.message || 'Upload failed. Please try again.';
+      if (error.response?.status === 401) {
+        navigate('/auth');
+      } else {
+        showMessage(errorMessage, 'error');
+      }
+    } finally {
       setIsUploading(false);
-
-      setTimeout(() => setMessage(null), 4000);
-    }, 900);
+    }
   };
 
-  const handleDelete = (id: string): void => {
-    if (!window.confirm("Delete this medical record permanently?")) return;
-    setFiles((prev) => prev.filter((f) => f._id !== id));
-    setMessage({ text: 'File deleted from health vault', type: 'success'});
-    setTimeout(() => setMessage(null), 3000);
+  // FIX 1: Replaced local filter with real DELETE /api/user/report/:id call
+  const handleDelete = async (id: string): Promise<void> => {
+    if (!window.confirm('Delete this medical record permanently?')) return;
+
+    try {
+      const response = await api.delete(`/user/report/${id}`);
+      if (response.data?.success) {
+        setFiles((prev) => prev.filter((f) => f.id !== id));
+        showMessage('File deleted from health vault', 'success', 3000);
+      }
+    } catch (error: any) {
+      console.error('Delete failed:', error);
+      const errorMessage = error.response?.data?.message || 'Failed to delete record.';
+      if (error.response?.status === 401) {
+        navigate('/auth');
+      } else {
+        showMessage(errorMessage, 'error');
+      }
+    }
   };
 
-  const handlePreview = (filename: string): void => {
-    // Generate functional sandbox URLs based on file configurations
-    if (/\.pdf$/i.test(filename)) {
+  // FIX 4: Now receives the stored originalFileName from the record (not a local File object name)
+  // FIX 6: Resets both previewFile AND previewType together via closePreview helper
+  const handlePreview = (originalFileName: string): void => {
+    if (/\.pdf$/i.test(originalFileName)) {
       setPreviewType('pdf');
-      // Shared sample fallback iframe asset
       setPreviewFile('https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf');
-    } else if (/\.(jpg|jpeg|png|gif|webp)$/i.test(filename)) {
+    } else if (/\.(jpg|jpeg|png|gif|webp)$/i.test(originalFileName)) {
       setPreviewType('image');
-      // Placeholder layout asset
       setPreviewFile('https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=800&auto=format&fit=crop&q=60');
     } else {
       setPreviewType('other');
       setPreviewFile('#');
     }
   };
-  const navigate = useNavigate();
+
+  // FIX 6: Clears both states together so stale previewType never persists
+  const closePreview = (): void => {
+    setPreviewFile(null);
+    setPreviewType(null);
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 py-8 px-4">
@@ -189,7 +225,7 @@ export default function UploadReport() {
 
                   {/* Category Select */}
                   <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1.5 flex items-center gap-1.5">
+                    <label className="block text-xs font-bold text-slate-600 mb-1.5 items-center gap-1.5">
                       <Tag size={14} /> Category
                     </label>
                     <select 
@@ -207,7 +243,7 @@ export default function UploadReport() {
 
                   {/* Visibility Select */}
                   <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1.5 flex items-center gap-1.5">
+                    <label className="block text-xs font-bold text-slate-600 mb-1.5 items-center gap-1.5">
                       <Shield size={14} /> Privacy
                     </label>
                     <select 
@@ -227,6 +263,7 @@ export default function UploadReport() {
                       type="file"
                       id="file-upload"
                       className="hidden"
+                      accept=".pdf,.jpg,.jpeg,.png,.gif,.webp"
                       onChange={handleFileChange}
                     />
                     <label htmlFor="file-upload" className="cursor-pointer flex flex-col items-center justify-center">
@@ -235,7 +272,7 @@ export default function UploadReport() {
                           <div className="p-3 bg-emerald-100 text-emerald-600 rounded-full inline-block mb-2">
                             <FileText size={32} />
                           </div>
-                          <p className="text-xs font-bold text-slate-700 truncate max-w-[200px] mx-auto">{file.name}</p>
+                          <p className="text-xs font-bold text-slate-700 truncate max-w-50 mx-auto">{file.name}</p>
                           <p className="text-[10px] text-slate-400 mt-1">Click to change</p>
                         </div>
                       ) : (
@@ -248,7 +285,7 @@ export default function UploadReport() {
                   </div>
 
                   <button 
-                    className="w-full flex items-center justify-center bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 text-white font-bold py-3 rounded-xl transition-all shadow-md text-sm cursor-pointer disabled:cursor-not-allowed"
+                    className="w-full flex items-center justify-center bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold py-3 rounded-xl transition-all shadow-md text-sm cursor-pointer disabled:cursor-not-allowed"
                     onClick={handleUpload}
                     disabled={!file || !title || isUploading}
                   >
@@ -261,13 +298,29 @@ export default function UploadReport() {
 
           {/* RIGHT: Records List */}
           <div className="lg:col-span-8">
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden min-h-[500px]">
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden min-h-125">
               <div className="p-6 border-b border-slate-100 flex items-center justify-between">
                 <h3 className="font-bold text-slate-700 text-lg">Stored Documents</h3>
                 <span className="bg-slate-100 text-slate-600 text-xs px-2.5 py-1 rounded-full font-semibold">{files.length} Files</span>
               </div>
 
-              {files.length > 0 ? (
+              {/* FIX 5: Show loading spinner while fetching, error state if fetch fails */}
+              {isFetching ? (
+                <div className="flex flex-col items-center justify-center py-32 gap-4">
+                  <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+                  <p className="text-sm text-slate-400">Loading your records...</p>
+                </div>
+              ) : fetchError ? (
+                <div className="flex flex-col items-center justify-center py-32 text-center px-8">
+                  <p className="text-rose-500 font-semibold mb-2">{fetchError}</p>
+                  <button
+                    onClick={() => window.location.reload()}
+                    className="text-sm text-indigo-600 underline"
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : files.length > 0 ? (
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse">
                     <thead>
@@ -280,15 +333,18 @@ export default function UploadReport() {
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {files.map((f) => (
-                        <tr key={f._id} className="hover:bg-slate-50/60 transition-colors">
+                        // FIX 3: Updated to use real field names: f.id, f.originalFileName, f.created_at
+                        <tr key={f.id} className="hover:bg-slate-50/60 transition-colors">
                           <td className="py-4 px-6">
                             <div className="flex items-center gap-3">
                               <div className="p-2 bg-slate-100 rounded-lg text-slate-500">
                                 <FileText size={18} />
                               </div>
                               <div>
-                                <div className="font-bold text-sm text-slate-800">{f.title || f.filename}</div>
-                                <div className="text-[10px] text-slate-400 italic mt-0.5">Uploaded {new Date(f.createdAt).toLocaleDateString()}</div>
+                                <div className="font-bold text-sm text-slate-800">{f.title || f.originalFileName}</div>
+                                <div className="text-[10px] text-slate-400 italic mt-0.5">
+                                  Uploaded {new Date(f.created_at).toLocaleDateString()}
+                                </div>
                               </div>
                             </div>
                           </td>
@@ -304,16 +360,17 @@ export default function UploadReport() {
                           </td>
                           <td className="py-4 px-6">
                             <div className="flex justify-center gap-1">
+                              {/* FIX 4: Pass originalFileName (stored field) not a local blob name */}
                               <button
                                 className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                                onClick={() => handlePreview(f.filename)}
+                                onClick={() => handlePreview(f.originalFileName)}
                                 title="View document"
                               >
                                 <Eye size={18} />
                               </button>
                               <button
                                 className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
-                                onClick={() => handleDelete(f._id)}
+                                onClick={() => handleDelete(f.id)}
                                 title="Delete document"
                               >
                                 <Trash2 size={18} />
@@ -339,16 +396,17 @@ export default function UploadReport() {
 
       {/* --- PREVIEW MODAL --- */}
       {previewFile && (
-        <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md flex items-center justify-center z-[100] p-4 md:p-10">
+        <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md flex items-center justify-center z-100 p-4 md:p-10">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl h-full flex flex-col overflow-hidden">
             <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-white">
               <div className="flex items-center gap-2">
                 <FileText className="text-indigo-600" size={20} />
                 <span className="font-bold text-slate-800 text-sm md:text-base">Record Preview Sandbox</span>
               </div>
+              {/* FIX 6: Use closePreview to clear both previewFile and previewType */}
               <button
                 className="w-8 h-8 rounded-full border border-slate-200 text-slate-400 hover:bg-slate-50 flex items-center justify-center text-sm font-semibold transition-colors"
-                onClick={() => setPreviewFile(null)}
+                onClick={closePreview}
               >
                 ✕
               </button>
@@ -363,10 +421,10 @@ export default function UploadReport() {
               )}
               {previewType === 'other' && (
                 <div className="text-center p-10">
-                   <div className="p-6 bg-white rounded-2xl shadow-sm inline-block">
+                  <div className="p-6 bg-white rounded-2xl shadow-sm inline-block">
                     <p className="mb-4 text-slate-600 font-medium">This file format cannot be previewed online.</p>
                     <button onClick={() => alert("Simulating file download...")} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl font-semibold text-sm">Download to View</button>
-                   </div>
+                  </div>
                 </div>
               )}
             </div>

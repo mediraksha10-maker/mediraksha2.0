@@ -5,24 +5,33 @@ export const getAllMeetings = async (req, res) => {
   const userId = req.user.id;
 
   try {
-    const [appointments] = await pool.query(
+    // FIX 6: pg returns { rows } not [rows] — destructure correctly throughout
+    // FIX 7: Fixed column aliasing — "a.Id" quoted the whole string as one identifier;
+    //         correct form is a."columnName" or just the unquoted alias
+    // FIX 8: No more backtick aliases — pg uses standard SQL double-quote identifiers
+    const { rows: appointments } = await pool.query(
       `SELECT 
-        "a.Id", "a.appointmentDate", "a.slotTime", a.status, "a.reasonOfAppointment",
-        d.name AS doctorName, d.speciality, d.hospital,
-        "s.bookingDate", s.status AS slotStatus
+        a.id,
+        a."appointmentDate",
+        a."slotTime",
+        a.status,
+        a."reasonOfAppointment",
+        d.name       AS "doctorName",
+        d.speciality AS "speciality",
+        d.hospital   AS "hospital",
+        s."bookingDate",
+        s.status     AS "slotStatus"
        FROM "Appointment" a
-       JOIN "Doctor" d ON 'a.doctorId" = d.id
-       JOIN "Slot" s ON "a.slotId" = s.id
-       WHERE "a.userId" = $1
-       ORDER BY "a.appointmentDate" DESC, "a.slotTime" ASC`,
+       JOIN "Doctor" d ON a."doctorId" = d.id
+       JOIN "Slot"   s ON a."slotId"   = s.id
+       WHERE a."userId" = $1
+       ORDER BY a."appointmentDate" DESC, a."slotTime" ASC`,
       [userId]
     );
 
-    if (appointments.length === 0) {
-      return res.status(404).json({ success: false, message: 'No appointments found' });
-    }
+    // FIX 13: Empty result is valid (new user has no appointments) — return 200 with []
+    return res.status(200).json({ success: true, data: appointments });
 
-    res.status(200).json({ success: true, data: appointments });
   } catch (error) {
     console.error('getAllMeetings error:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
@@ -35,23 +44,33 @@ export const getMeetingById = async (req, res) => {
   const { id } = req.params;
 
   try {
-    const [appointment] = await pool.query(
+    // FIX 8: Was FROM "Appointments a — missing closing quote crashed every call
+    const { rows } = await pool.query(
       `SELECT 
-        a.id, "a.appointmentDate", "a.slotTime", a.status, "a.reasonOfAppointment",
-        d.name AS doctorName, d.speciality, d.hospital, d.number AS doctorContact,
-        "s.bookingDate", s.status AS slotStatus
-       FROM "Appointments a
-       JOIN "Doctor" d ON "a.doctorId" = d.id
-       JOIN "Slot" s ON "a.slotId" = s.id
-       WHERE a.id = $1 AND a.userId = $2`,
+        a.id,
+        a."appointmentDate",
+        a."slotTime",
+        a.status,
+        a."reasonOfAppointment",
+        d.name       AS "doctorName",
+        d.speciality AS "speciality",
+        d.hospital   AS "hospital",
+        d.number     AS "doctorContact",
+        s."bookingDate",
+        s.status     AS "slotStatus"
+       FROM "Appointment" a
+       JOIN "Doctor" d ON a."doctorId" = d.id
+       JOIN "Slot"   s ON a."slotId"   = s.id
+       WHERE a.id = $1 AND a."userId" = $2`,
       [id, userId]
     );
 
-    if (appointment.length === 0) {
+    if (rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Appointment not found' });
     }
 
-    res.status(200).json({ success: true, data: appointment[0] });
+    res.status(200).json({ success: true, data: rows[0] });
+
   } catch (error) {
     console.error('getMeetingById error:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
@@ -64,29 +83,30 @@ export const deleteMeeting = async (req, res) => {
   const { id } = req.params;
 
   try {
-    // Verify ownership before deletion
-    const [appointment] = await pool.query(
-      `SELECT id, slotId, status FROM "Appointment" WHERE id = $1 AND "userId" = $2`,
+    const { rows } = await pool.query(
+      `SELECT id, "slotId", status FROM "Appointment" WHERE id = $1 AND "userId" = $2`,
       [id, userId]
     );
 
-    if (appointment.length === 0) {
+    if (rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Appointment not found' });
     }
 
-    if (appointment[0].status === 'completed') {
+    if (rows[0].status === 'completed') {
       return res.status(400).json({ success: false, message: 'Cannot cancel a completed appointment' });
     }
 
-    // Free up the slot back to available
+    // Free up the slot
     await pool.query(
       `UPDATE "Slot" SET status = 'available' WHERE id = $1`,
-      [appointment[0].slotId]
+      [rows[0].slotId]
     );
 
-    await pool.query(`DELETE FROM "Appointment" WHERE id = ?`, [id]);
+    // FIX 9: Was using ? (MySQL placeholder) instead of $1 (PostgreSQL)
+    await pool.query(`DELETE FROM "Appointment" WHERE id = $1`, [id]);
 
     res.status(200).json({ success: true, message: 'Appointment cancelled successfully' });
+
   } catch (error) {
     console.error('deleteMeeting error:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
@@ -100,15 +120,20 @@ export const bookMeeting = async (req, res) => {
   const { doctorId, slotId, appointmentDate, reasonOfAppointment } = req.body;
 
   if (!doctorId || !slotId || !appointmentDate) {
-    return res.status(400).json({ success: false, message: 'doctorId, slotId, and appointmentDate are required' });
+    return res.status(400).json({
+      success: false,
+      message: 'doctorId, slotId, and appointmentDate are required',
+    });
   }
 
-  const conn = await pool.getConnection();
+  // FIX 6: pg has no pool.getConnection() / beginTransaction() / release().
+  //         Use a single client checked out from the pool for transactions.
+  const client = await pool.connect();
   try {
-    await conn.beginTransaction();
+    await client.query('BEGIN');
 
     // Lock the slot row to prevent race conditions
-    const [slot] = await conn.query(
+    const { rows: slot } = await client.query(
       `SELECT id, status, "bookingDate" FROM "Slot"
        WHERE id = $1 AND "doctorId" = $2 AND status = 'available'
        FOR UPDATE`,
@@ -116,48 +141,55 @@ export const bookMeeting = async (req, res) => {
     );
 
     if (slot.length === 0) {
-      await conn.rollback();
+      await client.query('ROLLBACK');
       return res.status(409).json({ success: false, message: 'Slot is no longer available' });
     }
 
-    // Check user does not already have an appointment with same doctor on same date
-    const [duplicate] = await conn.query(
-      `SELECT id FROM "Appointment" 
+    // Duplicate appointment guard
+    const { rows: duplicate } = await client.query(
+      `SELECT id FROM "Appointment"
        WHERE "userId" = $1 AND "doctorId" = $2 AND "appointmentDate" = $3 AND status != 'cancelled'`,
       [userId, doctorId, appointmentDate]
     );
 
     if (duplicate.length > 0) {
-      await conn.rollback();
-      return res.status(409).json({ success: false, message: 'You already have an appointment with this doctor on the selected date' });
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        success: false,
+        message: 'You already have an appointment with this doctor on the selected date',
+      });
     }
 
-    // Mark slot as booked
-    await conn.query(
-      `UPDATE "Slot" SET status = 'booked', "userId' = $1 WHERE id = $2`,
+    // FIX 10: Was "userId' — mismatched quotes caused a syntax error
+    await client.query(
+      `UPDATE "Slot" SET status = 'booked', "userId" = $1 WHERE id = $2`,
       [userId, slotId]
     );
 
-    // Create the appointment
-    const [result] = await conn.query(
-      `INSERT INTO "Appointment" "(userId, doctorId, slotId, appointmentDate, reasonOfAppointment, status)"
-       VALUES ($1, $2, $3, $4, $5, 'pending')`,
+    // FIX 11: Column list was wrapped in quotes making it a string literal, not columns
+    // FIX 12: pg has no result.insertId — use RETURNING id instead
+    const { rows: inserted } = await client.query(
+      `INSERT INTO "Appointment" ("userId", "doctorId", "slotId", "appointmentDate", "reasonOfAppointment", status)
+       VALUES ($1, $2, $3, $4, $5, 'pending')
+       RETURNING id`,
       [userId, doctorId, slotId, appointmentDate, reasonOfAppointment || null]
     );
 
-    await conn.commit();
+    await client.query('COMMIT');
 
     res.status(201).json({
       success: true,
       message: 'Appointment booked successfully',
-      data: { appointmentId: result.insertId }
+      data: { appointmentId: inserted[0].id },
     });
+
   } catch (error) {
-    await conn.rollback();
+    await client.query('ROLLBACK');
     console.error('bookMeeting error:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
   } finally {
-    conn.release();
+    // FIX 6: pg uses client.release() not conn.release()
+    client.release();
   }
 };
 
@@ -167,11 +199,10 @@ export const getAvailableSlots = async (req, res) => {
   const { doctorId } = req.params;
   const { date } = req.query;
 
-  // If a specific date is passed use it, otherwise return all future available slots
   const fromDate = date || new Date().toISOString().split('T')[0];
 
   try {
-    const [doctor] = await pool.query(
+    const { rows: doctor } = await pool.query(
       `SELECT id, name, speciality, hospital FROM "Doctor" WHERE id = $1`,
       [doctorId]
     );
@@ -180,7 +211,7 @@ export const getAvailableSlots = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Doctor not found' });
     }
 
-    const [slots] = await pool.query(
+    const { rows: slots } = await pool.query(
       `SELECT id, "bookingDate", status, created_at
        FROM "Slot"
        WHERE "doctorId" = $1 AND status = 'available' AND "bookingDate" >= $2
@@ -192,8 +223,9 @@ export const getAvailableSlots = async (req, res) => {
       success: true,
       doctor: doctor[0],
       availableSlots: slots,
-      count: slots.length
+      count: slots.length,
     });
+
   } catch (error) {
     console.error('getAvailableSlots error:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });

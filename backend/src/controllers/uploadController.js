@@ -6,10 +6,9 @@ import { pool } from '../config/db.js';
  */
 export const uploadReport = async (req, res) => {
   try {
-    const userId = req.user.id; // Assumes authVerify sets req.user
+    const userId = req.user.id;
     const { title, category, visibility, doctorId, uploadedBy, fileId } = req.body;
     
-    // Check if file is present
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'No file uploaded.' });
     }
@@ -20,9 +19,6 @@ export const uploadReport = async (req, res) => {
 
     const originalFileName = req.file.originalname;
     const fileSize = req.file.size;
-
-    // Note: If you are saving the file to S3/Cloudinary, you'd do it here 
-    // and grab the resulting fileId/URL. For now, we store metadata.
 
     const query = `
       INSERT INTO "Report" 
@@ -38,7 +34,7 @@ export const uploadReport = async (req, res) => {
       title,
       category || null,
       fileSize,
-      fileId || null, // placeholder or actual ID from cloud storage
+      fileId || null,
       visibility || 'private',
       originalFileName
     ];
@@ -88,7 +84,8 @@ export const getReportById = async (req, res) => {
     const userId = req.user.id;
     const reportId = req.params.id;
 
-    const query = `SELECT * FROM "Report" WHERE "Id" = $1 AND "userId" = $2;`;
+    // FIX 7: Was "Id" (wrong casing) — PostgreSQL column is "id"; caused every query to fail
+    const query = `SELECT * FROM "Report" WHERE "id" = $1 AND "userId" = $2;`;
     const result = await pool.query(query, [reportId, userId]);
 
     if (result.rows.length === 0) {
@@ -114,15 +111,13 @@ export const deleteReport = async (req, res) => {
     const userId = req.user.id;
     const reportId = req.params.id;
 
-    // You can perform a DELETE directly but using RETURNING helps confirm it existed
-    const query = `DELETE FROM "Report" WHERE "Id" = $1 AND "userId" = $2 RETURNING *;`;
+    // FIX 7: Was "Id" (wrong casing) — same issue; silently matched 0 rows every time
+    const query = `DELETE FROM "Report" WHERE "id" = $1 AND "userId" = $2 RETURNING *;`;
     const result = await pool.query(query, [reportId, userId]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Report not found or unauthorized action.' });
     }
-
-    // Note: If actual files are stored in AWS S3/Cloudinary, trigger the file deletion here using result.rows[0].fileId
 
     return res.status(200).json({
       success: true,
@@ -131,6 +126,6 @@ export const deleteReport = async (req, res) => {
     });
   } catch (error) {
     console.error('Error deleting report:', error);
-    return res.status(500).json({ success: false, message: 'Server error deleting report.' });
+    return res.status(500).json({ success: false, message: 'Server error deleting account.' });
   }
 };

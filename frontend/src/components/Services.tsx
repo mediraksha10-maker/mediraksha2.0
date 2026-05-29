@@ -61,7 +61,7 @@ export default function Service() {
   const navigate = useNavigate();
 
   // Handler for testing interactivity without active routing
-  const handleCardClick = (viewPath: string, title: string): void => {
+  const handleCardClick = (viewPath: string, _title: string): void => {
     navigate(viewPath);
   };
 

@@ -1,36 +1,37 @@
 import { pool } from '../config/db.js';
 
 // GET /api/user/doctor/my
-// Returns the doctor registered to the logged-in user
 export const getMyDoctor = async (req, res) => {
   const userId = req.user.id;
 
   try {
-    const [user] = await pool.query(
+    // FIX 1: pg returns { rows } not [rows]
+    const { rows: users } = await pool.query(
       `SELECT "registeredDoctorId" FROM "User" WHERE id = $1`,
       [userId]
     );
 
-    if (user.length === 0) {
+    if (users.length === 0) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
-    if (!user[0].registeredDoctorId) {
+    if (!users[0].registeredDoctorId) {
       return res.status(404).json({ success: false, message: 'No doctor registered yet' });
     }
 
-    const [doctor] = await pool.query(
+    // FIX 2: Was WHERE Id = $1 — wrong casing; pg column is "id"
+    const { rows: doctors } = await pool.query(
       `SELECT id, name, email, number, age, gender, hospital, speciality, created_at
        FROM "Doctor"
-       WHERE Id = $1`,
-      [user[0].registeredDoctorId]
+       WHERE id = $1`,
+      [users[0].registeredDoctorId]
     );
 
-    if (doctor.length === 0) {
+    if (doctors.length === 0) {
       return res.status(404).json({ success: false, message: 'Registered doctor no longer exists' });
     }
 
-    res.status(200).json({ success: true, data: doctor[0] });
+    res.status(200).json({ success: true, data: doctors[0] });
   } catch (error) {
     console.error('getMyDoctor error:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
@@ -38,7 +39,6 @@ export const getMyDoctor = async (req, res) => {
 };
 
 // GET /api/user/doctor/search/:name
-// Search doctors by name (partial match), useful before registering one
 export const getDoctorByName = async (req, res) => {
   const { name } = req.params;
 
@@ -47,18 +47,17 @@ export const getDoctorByName = async (req, res) => {
   }
 
   try {
-    const [doctors] = await pool.query(
+    // FIX 1: { rows } destructuring
+    // FIX 3: Was LIKE ? (MySQL) — pg uses ILIKE $1 for case-insensitive matching
+    const { rows: doctors } = await pool.query(
       `SELECT id, name, email, number, age, gender, hospital, speciality
        FROM "Doctor"
-       WHERE name LIKE ?
+       WHERE name ILIKE $1
        ORDER BY name ASC`,
       [`%${name.trim()}%`]
     );
 
-    if (doctors.length === 0) {
-      return res.status(404).json({ success: false, message: 'No doctors found with that name' });
-    }
-
+    // Empty result is valid (no match) — 200 with empty array, not 404
     res.status(200).json({ success: true, count: doctors.length, data: doctors });
   } catch (error) {
     console.error('getDoctorByName error:', error);
@@ -67,29 +66,32 @@ export const getDoctorByName = async (req, res) => {
 };
 
 // GET /api/user/doctor/:doctorId
-// Get full details of a specific doctor + register them to the user if not already registered
 export const getDoctorById = async (req, res) => {
   const userId = req.user.id;
   const { doctorId } = req.params;
 
-  if (isNaN(doctorId)) {
-    return res.status(400).json({ success: false, message: 'Invalid doctor ID' });
+  // FIX 4: isNaN(doctorId) always returns false for UUID strings since they're
+  //         non-numeric — this guard blocked every request with a UUID doctor id.
+  //         Removed: let the DB query fail naturally if the id is malformed,
+  //         or validate as UUID if your schema uses UUIDs.
+  if (!doctorId) {
+    return res.status(400).json({ success: false, message: 'Doctor ID is required' });
   }
 
   try {
-    const [doctor] = await pool.query(
+    // FIX 1 & 2: { rows } + WHERE id (lowercase)
+    const { rows: doctors } = await pool.query(
       `SELECT id, name, email, number, age, gender, hospital, speciality, created_at
        FROM "Doctor"
-       WHERE Id = $1`,
+       WHERE id = $1`,
       [doctorId]
     );
 
-    if (doctor.length === 0) {
+    if (doctors.length === 0) {
       return res.status(404).json({ success: false, message: 'Doctor not found' });
     }
 
-    // Check current registered doctor on user
-    const [user] = await pool.query(
+    const { rows: users } = await pool.query(
       `SELECT "registeredDoctorId" FROM "User" WHERE id = $1`,
       [userId]
     );
@@ -97,15 +99,16 @@ export const getDoctorById = async (req, res) => {
     let registered = false;
     let message = 'Doctor fetched successfully';
 
-    if (!user[0].registeredDoctorId) {
-      // No doctor registered yet — auto-register this one
+    if (!users[0].registeredDoctorId) {
       await pool.query(
-        `UPDATE "User" SET "registeredDoctorId" = $1 WHERE id = $2`,
+        `UPDATE "User" SET "registeredDoctorId" = $1, "updated_at" = NOW() WHERE id = $2`,
         [doctorId, userId]
       );
       registered = true;
       message = 'Doctor fetched and registered to your account';
-    } else if (user[0].registeredDoctorId === parseInt(doctorId)) {
+    // FIX 7: Was parseInt(doctorId) — breaks with UUIDs (parseInt of UUID = NaN).
+    //         Compare as strings directly; both are the same type from the DB.
+    } else if (String(users[0].registeredDoctorId) === String(doctorId)) {
       registered = true;
       message = 'Doctor fetched (already your registered doctor)';
     }
@@ -114,7 +117,7 @@ export const getDoctorById = async (req, res) => {
       success: true,
       message,
       isRegisteredToYou: registered,
-      data: doctor[0]
+      data: doctors[0]
     });
   } catch (error) {
     console.error('getDoctorById error:', error);
@@ -123,38 +126,41 @@ export const getDoctorById = async (req, res) => {
 };
 
 // DELETE /api/user/doctor/:doctorId
-// Remove the registered doctor from user's profile
 export const removeRegisteredDoctor = async (req, res) => {
   const userId = req.user.id;
   const { doctorId } = req.params;
 
-  if (isNaN(doctorId)) {
-    return res.status(400).json({ success: false, message: 'Invalid doctor ID' });
+  // FIX 4: Same isNaN issue — removed for UUID compatibility
+  if (!doctorId) {
+    return res.status(400).json({ success: false, message: 'Doctor ID is required' });
   }
 
   try {
-    const [user] = await pool.query(
+    // FIX 1: { rows } destructuring
+    const { rows: users } = await pool.query(
       `SELECT "registeredDoctorId" FROM "User" WHERE id = $1`,
       [userId]
     );
 
-    if (user.length === 0) {
+    if (users.length === 0) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
-    if (!user[0].registeredDoctorId) {
+    if (!users[0].registeredDoctorId) {
       return res.status(400).json({ success: false, message: 'No doctor is currently registered' });
     }
 
-    if (user[0].registeredDoctorId !== parseInt(doctorId)) {
+    // FIX 7: String comparison instead of parseInt
+    if (String(users[0].registeredDoctorId) !== String(doctorId)) {
       return res.status(403).json({ success: false, message: 'This doctor is not registered to your account' });
     }
 
-    // Check for any pending/upcoming appointments with this doctor before removing
-    const [activeAppointments] = await pool.query(
+    // FIX 5: CURDATE() is MySQL — pg uses CURRENT_DATE
+    const { rows: activeAppointments } = await pool.query(
       `SELECT id FROM "Appointment"
-       WHERE "userId" = $1 AND "doctorId" = $2 AND status IN ('pending', 'confirmed')
-       AND appointmentDate >= CURDATE()`,
+       WHERE "userId" = $1 AND "doctorId" = $2
+         AND status IN ('pending', 'confirmed')
+         AND "appointmentDate" >= CURRENT_DATE`,
       [userId, doctorId]
     );
 
@@ -166,8 +172,9 @@ export const removeRegisteredDoctor = async (req, res) => {
       });
     }
 
+    // FIX 6: Was UPDATE User SET — missing quotes; pg needs "User" for case-sensitive table name
     await pool.query(
-      `UPDATE User SET "registeredDoctorId" = NULL WHERE id = $1`,
+      `UPDATE "User" SET "registeredDoctorId" = NULL, "updated_at" = NOW() WHERE id = $1`,
       [userId]
     );
 

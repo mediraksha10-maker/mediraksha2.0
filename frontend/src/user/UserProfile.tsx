@@ -54,6 +54,14 @@ export default function MyDetail() {
 
   const navigate = useNavigate();
 
+  // Helper to build formData from a UserData object
+  const buildFormData = (profile: UserData): FormData => ({
+    name:   profile.name   || "",
+    age:    profile.age    ? String(profile.age) : "",
+    gender: profile.gender || "",
+    number: profile.number || "",
+  });
+
   // --- Fetch Profile Details on Load ---
   useEffect(() => {
     const fetchUserProfile = async () => {
@@ -62,21 +70,16 @@ export default function MyDetail() {
         const response = await api.get("/user/info/detail");
         
         if (response.data && response.data.success) {
-          const profileData = response.data;
+          // FIX 1: was storing entire response.data object; must use response.data.data
+          const profileData: UserData = response.data.data;
           setUser(profileData);
           
-          // Seed the form fields with fetched data
-          setFormData({
-            name:   profileData.name || "",
-            age:    profileData.age ? String(profileData.age) : "",
-            gender: profileData.gender || "",
-            number: profileData.number || "",
-          });
+          // FIX 2: was reading profileData.name etc. directly from the wrapper object
+          setFormData(buildFormData(profileData));
         }
       } catch (error: any) {
         console.error("Error retrieving user context profiles:", error);
         
-        // Handle Protected Route Failures: Redirect unauthenticated requests back to /auth page
         const errorMessage = error.response?.data?.message || "";
         if (error.response?.status === 401 || errorMessage.toLowerCase().includes("token")) {
           alert("Session expired or missing credentials. Redirecting to login...");
@@ -123,11 +126,26 @@ export default function MyDetail() {
     }
   };
 
-  const handleLogout = (): void => {
-    // Basic structural frontend cleanup sequence
-    alert("Logging out...");
-    localStorage.removeItem("token"); // Remove storage strings if your app uses local token strategies
-    navigate("/auth");
+  // FIX 3: Cancel now resets formData to current saved user values,
+  // preventing stale edits from persisting when reopening edit mode.
+  const handleCancel = (): void => {
+    if (user) {
+      setFormData(buildFormData(user));
+    }
+    setEditing(false);
+  };
+
+  // FIX 4: Auth uses HTTP-only cookies (set by the server), not localStorage.
+  // localStorage.removeItem("token") did nothing. Call a backend logout endpoint
+  // so the server can clear the cookie, then redirect.
+  const handleLogout = async (): Promise<void> => {
+    try {
+      await api.post("/auth/logout"); // server clears the HTTP-only cookie
+    } catch (_) {
+      // Even if the call fails, proceed to redirect
+    } finally {
+      navigate("/auth");
+    }
   };
 
   /* ── Loading State ── */
@@ -247,8 +265,9 @@ export default function MyDetail() {
                 >
                   <Check size={16} /> {saving ? "Saving..." : "Save"}
                 </button>
+                {/* FIX 3: was calling setEditing(false) directly; now uses handleCancel to reset form */}
                 <button
-                  onClick={() => setEditing(false)}
+                  onClick={handleCancel}
                   className="flex-1 flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-xl transition-all cursor-pointer"
                 >
                   <X size={16} /> Cancel
