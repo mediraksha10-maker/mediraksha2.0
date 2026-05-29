@@ -7,7 +7,6 @@ import { useNavigate } from 'react-router';
 import api from '../api/Api';
 
 /* ── Type Definitions ── */
-// FIX 3: Interface updated to match real backend response field names
 interface MedicalFile {
   id: string;
   title: string;
@@ -28,7 +27,9 @@ export default function UploadReport() {
   // --- Form State ---
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState<string>('');
-  const [category, setCategory] = useState<string>('LAB');
+  
+  // FIX: Default state string updated to match the lowercase DB enum value
+  const [category, setCategory] = useState<string>('lab_report');
   const [visibility, setVisibility] = useState<'private' | 'doctor'>('private');
   
   // --- UI & Data State ---
@@ -37,7 +38,6 @@ export default function UploadReport() {
   const [previewFile, setPreviewFile] = useState<string | null>(null);
   const [previewType, setPreviewType] = useState<PreviewType>(null);
   const [isUploading, setIsUploading] = useState<boolean>(false);
-  // FIX 5: Added loading + error state for initial fetch
   const [isFetching, setIsFetching] = useState<boolean>(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
@@ -48,7 +48,6 @@ export default function UploadReport() {
     setTimeout(() => setMessage(null), duration);
   };
 
-  // FIX 1: Replaced mock data load with real GET /api/user/report/all call
   useEffect(() => {
     const fetchReports = async () => {
       try {
@@ -79,7 +78,6 @@ export default function UploadReport() {
     if (selectedFile) setFile(selectedFile);
   };
 
-  // FIX 1 & 2: Replaced setTimeout simulation with real POST using FormData (multipart/form-data)
   const handleUpload = async (): Promise<void> => {
     if (!file || !title) {
       showMessage('Please provide a title and select a file', 'error');
@@ -88,27 +86,28 @@ export default function UploadReport() {
 
     setIsUploading(true);
     try {
-      // FIX 2: Must use FormData — sending a File object requires multipart encoding,
-      // not JSON. axios will auto-set Content-Type: multipart/form-data with boundary.
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append('file', file); 
       formData.append('title', title);
-      formData.append('category', category);
+      formData.append('category', category); // This now carries the correct lowercase enum string
       formData.append('visibility', visibility);
 
-      const response = await api.post('/user/report/upload', formData);
+      const response = await api.post('/user/report/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
 
       if (response.data?.success) {
-        // Prepend new record to the top of the list
         setFiles((prev) => [response.data.data, ...prev]);
         showMessage('Medical record uploaded and encrypted successfully!', 'success');
 
         // Reset form
         setFile(null);
         setTitle('');
-        setCategory('LAB');
+        setCategory('lab'); // FIX: Reset to match lowercase enum
         setVisibility('private');
-        // Reset file input element visually
+        
         const fileInput = document.getElementById('file-upload') as HTMLInputElement;
         if (fileInput) fileInput.value = '';
       }
@@ -125,7 +124,6 @@ export default function UploadReport() {
     }
   };
 
-  // FIX 1: Replaced local filter with real DELETE /api/user/report/:id call
   const handleDelete = async (id: string): Promise<void> => {
     if (!window.confirm('Delete this medical record permanently?')) return;
 
@@ -146,8 +144,6 @@ export default function UploadReport() {
     }
   };
 
-  // FIX 4: Now receives the stored originalFileName from the record (not a local File object name)
-  // FIX 6: Resets both previewFile AND previewType together via closePreview helper
   const handlePreview = (originalFileName: string): void => {
     if (/\.pdf$/i.test(originalFileName)) {
       setPreviewType('pdf');
@@ -161,10 +157,15 @@ export default function UploadReport() {
     }
   };
 
-  // FIX 6: Clears both states together so stale previewType never persists
   const closePreview = (): void => {
     setPreviewFile(null);
     setPreviewType(null);
+  };
+
+  // Helper utility function to make database values look clean on the frontend table
+  const formatCategoryLabel = (cat: string) => {
+    if (!cat) return 'Other';
+    return cat.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase());
   };
 
   return (
@@ -228,16 +229,16 @@ export default function UploadReport() {
                     <label className="block text-xs font-bold text-slate-600 mb-1.5 items-center gap-1.5">
                       <Tag size={14} /> Category
                     </label>
+                    {/* FIX: Values updated to lowercase matching your PostgreSQL ENUM definitions */}
                     <select 
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all cursor-pointer"
                       value={category}
                       onChange={(e: ChangeEvent<HTMLSelectElement>) => setCategory(e.target.value)}
                     >
-                      <option value="LAB">Lab Report</option>
-                      <option value="PRESCRIPTION">Prescription</option>
-                      <option value="SCAN">Scan (MRI, X-Ray)</option>
-                      <option value="DISCHARGE">Discharge Summary</option>
-                      <option value="OTHER">Other</option>
+                      <option value="lab">Lab Report</option>
+                      <option value="prescription">Prescription</option>
+                      <option value="scan">Scan (MRI, X-Ray)</option>
+                      <option value="other">Other</option>
                     </select>
                   </div>
 
@@ -304,7 +305,6 @@ export default function UploadReport() {
                 <span className="bg-slate-100 text-slate-600 text-xs px-2.5 py-1 rounded-full font-semibold">{files.length} Files</span>
               </div>
 
-              {/* FIX 5: Show loading spinner while fetching, error state if fetch fails */}
               {isFetching ? (
                 <div className="flex flex-col items-center justify-center py-32 gap-4">
                   <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
@@ -333,7 +333,6 @@ export default function UploadReport() {
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {files.map((f) => (
-                        // FIX 3: Updated to use real field names: f.id, f.originalFileName, f.created_at
                         <tr key={f.id} className="hover:bg-slate-50/60 transition-colors">
                           <td className="py-4 px-6">
                             <div className="flex items-center gap-3">
@@ -349,7 +348,10 @@ export default function UploadReport() {
                             </div>
                           </td>
                           <td className="py-4 px-6">
-                            <span className="inline-block text-[11px] font-bold tracking-wider px-2 py-0.5 rounded border border-slate-200 text-slate-500 bg-white">{f.category}</span>
+                            {/* FIX: Uses helper to format db lowercase enum string nicely (e.g. lab_report -> Lab Report) */}
+                            <span className="inline-block text-[11px] font-bold tracking-wider px-2 py-0.5 rounded border border-slate-200 text-slate-500 bg-white">
+                              {formatCategoryLabel(f.category)}
+                            </span>
                           </td>
                           <td className="py-4 px-6">
                             {f.visibility === 'private' ? (
@@ -360,7 +362,6 @@ export default function UploadReport() {
                           </td>
                           <td className="py-4 px-6">
                             <div className="flex justify-center gap-1">
-                              {/* FIX 4: Pass originalFileName (stored field) not a local blob name */}
                               <button
                                 className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
                                 onClick={() => handlePreview(f.originalFileName)}
@@ -403,7 +404,6 @@ export default function UploadReport() {
                 <FileText className="text-indigo-600" size={20} />
                 <span className="font-bold text-slate-800 text-sm md:text-base">Record Preview Sandbox</span>
               </div>
-              {/* FIX 6: Use closePreview to clear both previewFile and previewType */}
               <button
                 className="w-8 h-8 rounded-full border border-slate-200 text-slate-400 hover:bg-slate-50 flex items-center justify-center text-sm font-semibold transition-colors"
                 onClick={closePreview}

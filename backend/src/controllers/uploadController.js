@@ -2,13 +2,14 @@ import { pool } from '../config/db.js';
 
 /**
  * @route   POST /api/user/report/upload
- * @desc    Upload a new medical report
+ * @desc    Upload a new medical report (Converts file buffer to Base64 and saves to DB)
  */
 export const uploadReport = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { title, category, visibility, doctorId, uploadedBy, fileId } = req.body;
+    const { title, category, visibility, doctorId, uploadedBy } = req.body;
     
+    // 1. Validate that the file was caught by Multer memory storage
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'No file uploaded.' });
     }
@@ -19,7 +20,11 @@ export const uploadReport = async (req, res) => {
 
     const originalFileName = req.file.originalname;
     const fileSize = req.file.size;
+    
+    // FIX: Convert the binary RAM buffer into a clean Base64 string that maps to your TEXT/VARCHAR column
+    const base64FileData = req.file.buffer.toString('base64'); 
 
+    // 2. Insert into the database
     const query = `
       INSERT INTO "Report" 
       ("userId", "uploadedBy", "doctorId", "title", "category", "fileSize", "fileId", "visibility", "originalFileName", "created_at", "updated_at")
@@ -34,7 +39,7 @@ export const uploadReport = async (req, res) => {
       title,
       category || null,
       fileSize,
-      fileId || null,
+      base64FileData, // <-- Fixed: Sending a text-safe string representation of the file instead of raw bytes
       visibility || 'private',
       originalFileName
     ];
@@ -43,7 +48,7 @@ export const uploadReport = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: 'Report uploaded successfully',
+      message: 'Report uploaded and saved successfully',
       data: result.rows[0]
     });
 
@@ -84,7 +89,6 @@ export const getReportById = async (req, res) => {
     const userId = req.user.id;
     const reportId = req.params.id;
 
-    // FIX 7: Was "Id" (wrong casing) — PostgreSQL column is "id"; caused every query to fail
     const query = `SELECT * FROM "Report" WHERE "id" = $1 AND "userId" = $2;`;
     const result = await pool.query(query, [reportId, userId]);
 
@@ -111,7 +115,6 @@ export const deleteReport = async (req, res) => {
     const userId = req.user.id;
     const reportId = req.params.id;
 
-    // FIX 7: Was "Id" (wrong casing) — same issue; silently matched 0 rows every time
     const query = `DELETE FROM "Report" WHERE "id" = $1 AND "userId" = $2 RETURNING *;`;
     const result = await pool.query(query, [reportId, userId]);
 

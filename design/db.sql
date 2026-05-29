@@ -4,7 +4,7 @@
 CREATE TYPE gender_enum AS ENUM ('male', 'female', 'other');
 CREATE TYPE appointment_status_enum AS ENUM ('pending', 'confirmed', 'cancelled', 'completed');
 CREATE TYPE slot_status_enum AS ENUM ('available', 'booked', 'blocked');
-CREATE TYPE report_category_enum AS ENUM ('lab_report', 'prescription', 'scan', 'other');
+CREATE TYPE report_category_enum AS ENUM ('lab', 'prescription', 'scan', 'other');
 
 -- ============================================================================
 -- 2. CREATE TABLES
