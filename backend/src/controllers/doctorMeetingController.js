@@ -1,29 +1,34 @@
 import { pool } from '../config/db.js';
 
+const VALID_APPOINTMENT_STATUSES = new Set(['pending', 'confirmed', 'cancelled', 'completed']);
+
 // GET /api/doctor/meetings/all
 export const getAllMeetings = async (req, res) => {
   const doctorId = req.user.id;
   const { status, date } = req.query; // optional filters ?status=pending&date=2026-06-01
 
+  if (status && !VALID_APPOINTMENT_STATUSES.has(status)) {
+    return res.status(400).json({ success: false, message: 'Invalid appointment status' });
+  }
+
   try {
-    // 1. Initial base query string using explicit Postgres quotes and parameterized initial anchor ($1)
     let query = `
       SELECT
-        a."Id" AS "Id", a."appointmentDate", a."slotTime", a."status", a."reasonOfAppointment",
+        a.id AS "Id", a."appointmentDate", a."slotTime", a.status, a."reasonOfAppointment",
         a."created_at",
-        u."id" AS "patientId", u."name" AS "patientName", u."email" AS "patientEmail",
-        u."number" AS "patientContact", u."age" AS "patientAge", u."gender" AS "patientGender",
-        s."bookingDate", s."status" AS "slotStatus"
-      FROM "Appointments" a
-      JOIN "User" u ON a."userId" = u."id"
-      JOIN "Slots" s ON a."slotId" = s."id"
+        u.id AS "patientId", u.name AS "patientName", u.email AS "patientEmail",
+        u.number AS "patientContact", u.age AS "patientAge", u.gender AS "patientGender",
+        s."bookingDate", s.status AS "slotStatus"
+      FROM "Appointment" a
+      JOIN "User" u ON a."userId" = u.id
+      JOIN "Slot" s ON a."slotId" = s.id
       WHERE a."doctorId" = $1`;
 
     const params = [doctorId];
-    let paramIndex = 2; // Next dynamic parameters start tracking from index position $2
+    let paramIndex = 2;
 
     if (status) {
-      query += ` AND a."status" = $${paramIndex}`;
+      query += ` AND a.status = $${paramIndex}`;
       params.push(status);
       paramIndex++;
     }
@@ -35,12 +40,7 @@ export const getAllMeetings = async (req, res) => {
 
     query += ` ORDER BY a."appointmentDate" ASC, a."slotTime" ASC`;
 
-    // 2. Destructure standard result object context targeting '.rows' directly
     const { rows: appointments } = await pool.query(query, params);
-
-    if (appointments.length === 0) {
-      return res.status(404).json({ success: false, message: 'No appointments found' });
-    }
 
     res.status(200).json({ success: true, count: appointments.length, data: appointments });
   } catch (error) {
@@ -54,7 +54,6 @@ export const getMeetingById = async (req, res) => {
   const doctorId = req.user.id;
   const { id } = req.params;
 
-  // UUID verification adjustment if your database doesn't use simple integers
   if (!id) {
     return res.status(400).json({ success: false, message: 'Invalid appointment ID' });
   }
@@ -62,15 +61,15 @@ export const getMeetingById = async (req, res) => {
   try {
     const { rows: appointments } = await pool.query(
       `SELECT
-        a."Id" AS "Id", a."appointmentDate", a."slotTime", a."status", a."reasonOfAppointment",
-        a."RequestGroupId", a."created_at", a."updated_at",
-        u."id" AS "patientId", u."name" AS "patientName", u."email" AS "patientEmail",
-        u."number" AS "patientContact", u."age" AS "patientAge", u."gender" AS "patientGender",
-        s."id" AS "slotId", s."bookingDate", s."status" AS "slotStatus"
-       FROM "Appointments" a
-       JOIN "User" u ON a."userId" = u."id"
-       JOIN "Slots" s ON a."slotId" = s."id"
-       WHERE a."Id" = $1 AND a."doctorId" = $2`,
+        a.id AS "Id", a."appointmentDate", a."slotTime", a.status, a."reasonOfAppointment",
+        a."requestGroupId", a."created_at", a."updated_at",
+        u.id AS "patientId", u.name AS "patientName", u.email AS "patientEmail",
+        u.number AS "patientContact", u.age AS "patientAge", u.gender AS "patientGender",
+        s.id AS "slotId", s."bookingDate", s.status AS "slotStatus"
+       FROM "Appointment" a
+       JOIN "User" u ON a."userId" = u.id
+       JOIN "Slot" s ON a."slotId" = s.id
+       WHERE a.id = $1 AND a."doctorId" = $2`,
       [id, doctorId]
     );
 
@@ -94,14 +93,14 @@ export const deleteMeeting = async (req, res) => {
     return res.status(400).json({ success: false, message: 'Invalid appointment ID' });
   }
 
-  // Handle client transactions natively using single dedicated checkout pools for Postgres
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
     const { rows: appointments } = await client.query(
-      `SELECT "Id", "slotId", "status", "userId" FROM "Appointments"
-       WHERE "Id" = $1 AND "doctorId" = $2`,
+      `SELECT id, "slotId", status, "userId" FROM "Appointment"
+       WHERE id = $1 AND "doctorId" = $2
+       FOR UPDATE`,
       [id, doctorId]
     );
 
@@ -122,15 +121,13 @@ export const deleteMeeting = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Appointment is already cancelled' });
     }
 
-    // Mark appointment as cancelled instead of hard delete — preserves history (Uses native Postgres NOW())
     await client.query(
-      `UPDATE "Appointments" SET "status" = 'cancelled', "updated_at" = NOW() WHERE "Id" = $1`,
+      `UPDATE "Appointment" SET status = 'cancelled', "updated_at" = NOW() WHERE id = $1`,
       [id]
     );
 
-    // Free the slot back to available
     await client.query(
-      `UPDATE "Slots" SET "status" = 'available', "userId" = NULL WHERE "id" = $1`,
+      `UPDATE "Slot" SET status = 'available', "userId" = NULL, "updated_at" = NOW() WHERE id = $1`,
       [targetAppointment.slotId]
     );
 

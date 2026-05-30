@@ -5,7 +5,7 @@ import api from "../api/Api"; // Your configured Axios instance
 interface Appointment {
   Id: number;
   appointmentDate: string;
-  slotTime: string;
+  slotTime: string | null;
   status: 'pending' | 'confirmed' | 'completed' | 'cancelled';
   reasonOfAppointment: string;
   patientId: number;
@@ -90,6 +90,11 @@ export default function DoctorMeetings() {
     } finally {
       setCancellingId(null);
     }
+  };
+
+  const formatAppointmentTime = (slotTime: string | null) => {
+    if (!slotTime) return "Date slot";
+    return slotTime.slice(0, 5);
   };
 
   // Helper Badge Colors for Meeting Status
@@ -177,7 +182,7 @@ export default function DoctorMeetings() {
                   </div>
                   <div className="flex items-center gap-1 text-xs font-semibold text-slate-500">
                     <Clock size={13} />
-                    <span>{meeting.slotTime}</span>
+                    <span>{formatAppointmentTime(meeting.slotTime)}</span>
                   </div>
                 </div>
 
@@ -257,7 +262,7 @@ export default function DoctorMeetings() {
                   </div>
                   <div className="bg-slate-50 rounded-xl p-3">
                     <p className="text-[10px] uppercase text-slate-400 font-bold">Time Window</p>
-                    <p className="font-bold text-slate-800 mt-0.5">{selectedMeeting.slotTime}</p>
+                    <p className="font-bold text-slate-800 mt-0.5">{formatAppointmentTime(selectedMeeting.slotTime)}</p>
                   </div>
                 </div>
               </div>
