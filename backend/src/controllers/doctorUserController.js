@@ -5,24 +5,18 @@ export const getAllPatients = async (req, res) => {
   const doctorId = req.user.id;
 
   try {
-    // FIX 1: PostgreSQL group by requirement & case-sensitive double quotes
-    // FIX 2: Swapped '?' placeholders for '$1' and '$2'
     const { rows: patients } = await pool.query(
       `SELECT
-        u."id", u."name", u."email", u."number", u."age", u."gender",
-        COUNT(a."Id") AS "totalAppointments",
+        u.id, u.name, u.email, u.number, u.age, u.gender, u.created_at,
+        COUNT(a.id) AS "totalAppointments",
         MAX(a."appointmentDate") AS "lastAppointmentDate"
        FROM "User" u
-       LEFT JOIN "Appointments" a ON a."userId" = u."id" AND a."doctorId" = $1
+       LEFT JOIN "Appointment" a ON a."userId" = u.id AND a."doctorId" = $1
        WHERE u."registeredDoctorId" = $2
-       GROUP BY u."id", u."name", u."email", u."number", u."age", u."gender"
-       ORDER BY u."name" ASC`,
+       GROUP BY u.id, u.name, u.email, u.number, u.age, u.gender, u.created_at
+       ORDER BY u.name ASC`,
       [doctorId, doctorId]
     );
-
-    if (patients.length === 0) {
-      return res.status(404).json({ success: false, message: 'No patients registered yet' });
-    }
 
     res.status(200).json({ success: true, count: patients.length, data: patients });
   } catch (error) {
@@ -36,17 +30,15 @@ export const getPatientById = async (req, res) => {
   const doctorId = req.user.id;
   const { id } = req.params;
 
-  // Removed isNaN guard to maintain full compatibility if you are using alphanumeric UUIDs
   if (!id) {
     return res.status(400).json({ success: false, message: 'Invalid patient ID' });
   }
 
   try {
-    // Verify the patient is actually registered to this doctor
     const { rows: users } = await pool.query(
-      `SELECT "id", "name", "email", "number", "age", "gender", "created_at"
+      `SELECT id, name, email, number, age, gender, created_at
        FROM "User"
-       WHERE "id" = $1 AND "registeredDoctorId" = $2`,
+       WHERE id = $1 AND "registeredDoctorId" = $2`,
       [id, doctorId]
     );
 
@@ -54,12 +46,11 @@ export const getPatientById = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Patient not found or not registered to you' });
     }
 
-    // Fetch appointment history with this doctor
     const { rows: appointments } = await pool.query(
       `SELECT
-        a."Id" AS "Id", a."appointmentDate", a."slotTime", a."status",
+        a.id AS "Id", a."appointmentDate", a."slotTime", a.status,
         a."reasonOfAppointment", a."created_at"
-       FROM "Appointments" a
+       FROM "Appointment" a
        WHERE a."userId" = $1 AND a."doctorId" = $2
        ORDER BY a."appointmentDate" DESC`,
       [id, doctorId]
@@ -88,7 +79,6 @@ export const removePatient = async (req, res) => {
     return res.status(400).json({ success: false, message: 'Invalid patient ID' });
   }
 
-  // Use pool.connect() client checkout abstraction for PostgreSQL transactions
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -103,17 +93,15 @@ export const removePatient = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Patient not found' });
     }
 
-    // Enforce matching text strings comparisons securely
     if (String(users[0].registeredDoctorId) !== String(doctorId)) {
       await client.query('ROLLBACK');
       return res.status(403).json({ success: false, message: 'This patient is not registered to you' });
     }
 
-    // Block removal if active upcoming appointments exist (MySQL CURDATE() replaced with CURRENT_DATE)
     const { rows: activeAppointments } = await client.query(
-      `SELECT "Id" FROM "Appointments"
+      `SELECT id FROM "Appointment"
        WHERE "userId" = $1 AND "doctorId" = $2
-       AND "status" IN ('pending', 'confirmed')
+       AND status IN ('pending', 'confirmed')
        AND "appointmentDate" >= CURRENT_DATE`,
       [id, doctorId]
     );
@@ -127,9 +115,8 @@ export const removePatient = async (req, res) => {
       });
     }
 
-    // Detach patient from this doctor
     await client.query(
-      `UPDATE "User" SET "registeredDoctorId" = NULL, "updated_at" = NOW() WHERE "id" = $1`,
+      `UPDATE "User" SET "registeredDoctorId" = NULL, "updated_at" = NOW() WHERE id = $1`,
       [id]
     );
 
@@ -140,6 +127,6 @@ export const removePatient = async (req, res) => {
     console.error('removePatient error:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
   } finally {
-    client.release(); // Releases the client back to the connection pool
+    client.release();
   }
 };
