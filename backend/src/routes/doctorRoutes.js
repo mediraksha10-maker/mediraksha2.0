@@ -20,6 +20,12 @@ import {
   removePatient 
 } from '../controllers/doctorUserController.js';
 
+import {
+  getAllSlots,
+  addSlot,
+  deleteSlot
+} from '../controllers/doctorSlotController.js';
+
 
 // ── DOCTOR PROFILE CHANNELS ──
 // Resolves to: /doctor/info/detail, /doctor/info/update, etc.
@@ -30,6 +36,9 @@ router.delete('/info/delete', deleteDoctorAccount);
 
 // ── DOCTOR SLOT ──
 // Resolves to: /doctor/slot/all, /doctor/slot/:id, etc.
+router.get('/slot/all', getAllSlots);
+router.post('/slot/publish', addSlot);
+router.delete('/slot/:id', deleteSlot);
 
 
 // ── APPOINTMENTS / MEETINGS MANAGEMENT ──

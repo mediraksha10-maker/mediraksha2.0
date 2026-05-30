@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { User, LayoutDashboard, Calendar, Users, LogOut, Menu, X, CheckCircle } from "lucide-react";
+import { User, LayoutDashboard, Calendar, Users, LogOut, Menu, X, CheckCircle, CalendarPlus, Trash2, RefreshCw } from "lucide-react";
 import { useNavigate } from "react-router";
 import api from "../api/Api";
 
@@ -9,7 +9,7 @@ import DoctorPatients from "./DoctorPatient";
 import DoctorMeetings from "./DoctorMeeting"; // Assuming your appointment/slot management is handled here
 
 // Define union type for explicit state type-safety
-type DashboardTab = "dashboard" | "meetings" | "patients" | "profile";
+type DashboardTab = "dashboard" | "slots" | "meetings" | "patients" | "profile";
 
 export default function DoctorPage() {
   const [activeTab, setActiveTab] = useState<DashboardTab>("dashboard");
@@ -53,6 +53,7 @@ export default function DoctorPage() {
 
   const menuItems = [
     { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard size={18} /> },
+    { id: "slots", label: "Slots", icon: <CalendarPlus size={18} /> },
     { id: "meetings", label: "Appointments", icon: <Calendar size={18} /> },
     { id: "patients", label: "My Patients", icon: <Users size={18} /> },
     { id: "profile", label: "My Profile", icon: <User size={18} /> },
@@ -162,12 +163,15 @@ export default function DoctorPage() {
             )}
 
             {/* ── TAB TWO: APPOINTMENTS AND SLOTS CONFIG ── */}
+            {activeTab === "slots" && <DoctorSlots />}
+
+            {/* ── TAB THREE: APPOINTMENTS ── */}
             {activeTab === "meetings" && <DoctorMeetings />}
 
-            {/* ── TAB THREE: SYSTEM PATIENTS DATA TRACKER ── */}
+            {/* ── TAB FOUR: SYSTEM PATIENTS DATA TRACKER ── */}
             {activeTab === "patients" && <DoctorPatients />}
 
-            {/* ── TAB FOUR: PROFILE PREFERENCES SCREEN ── */}
+            {/* ── TAB FIVE: PROFILE PREFERENCES SCREEN ── */}
             {activeTab === "profile" && (
               <div className="animate-fade-in flex justify-center">
                 <div className="w-full max-w-md">
@@ -180,6 +184,218 @@ export default function DoctorPage() {
         </main>
       </div>
 
+    </div>
+  );
+}
+
+interface DoctorSlot {
+  id: number;
+  bookingDate: string;
+  status: "available" | "booked" | "blocked";
+  created_at: string;
+}
+
+function DoctorSlots() {
+  const [slots, setSlots] = useState<DoctorSlot[]>([]);
+  const [bookingDate, setBookingDate] = useState<string>("");
+  const [statusFilter, setStatusFilter] = useState<string>("");
+  const [loading, setLoading] = useState<boolean>(true);
+  const [publishing, setPublishing] = useState<boolean>(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  const today = new Date().toISOString().split("T")[0];
+
+  const showMessage = (type: "success" | "error", text: string) => {
+    setMessage({ type, text });
+    setTimeout(() => setMessage(null), 3500);
+  };
+
+  const fetchSlots = async () => {
+    try {
+      setLoading(true);
+      const params: Record<string, string> = {};
+      if (statusFilter) params.status = statusFilter;
+
+      const response = await api.get("/doctor/slot/all", { params });
+      if (response.data?.success) {
+        setSlots(response.data.data || []);
+      }
+    } catch (error: any) {
+      showMessage("error", error.response?.data?.message || "Failed to load slots.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSlots();
+  }, [statusFilter]);
+
+  const handlePublishSlot = async () => {
+    if (!bookingDate) {
+      showMessage("error", "Select a date before publishing.");
+      return;
+    }
+
+    setPublishing(true);
+    try {
+      const response = await api.post("/doctor/slot/publish", { bookingDate });
+      if (response.data?.success) {
+        setSlots((prev) => [response.data.data, ...prev].sort((a, b) => a.bookingDate.localeCompare(b.bookingDate)));
+        setBookingDate("");
+        showMessage("success", response.data.message || "Slot published.");
+      }
+    } catch (error: any) {
+      showMessage("error", error.response?.data?.message || "Failed to publish slot.");
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  const handleDeleteSlot = async (slot: DoctorSlot) => {
+    if (slot.status === "booked") {
+      showMessage("error", "Booked slots cannot be deleted.");
+      return;
+    }
+
+    if (!window.confirm("Delete this published slot?")) return;
+
+    setDeletingId(slot.id);
+    try {
+      const response = await api.delete(`/doctor/slot/${slot.id}`);
+      if (response.data?.success) {
+        setSlots((prev) => prev.filter((item) => item.id !== slot.id));
+        showMessage("success", response.data.message || "Slot deleted.");
+      }
+    } catch (error: any) {
+      showMessage("error", error.response?.data?.message || "Failed to delete slot.");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const statusStyle = (status: DoctorSlot["status"]) => {
+    const styles = {
+      available: "bg-emerald-50 text-emerald-700 border-emerald-200",
+      booked: "bg-indigo-50 text-indigo-700 border-indigo-200",
+      blocked: "bg-slate-100 text-slate-600 border-slate-200"
+    };
+    return `px-2.5 py-1 rounded-md border text-[11px] font-bold uppercase tracking-wider ${styles[status]}`;
+  };
+
+  return (
+    <div className="w-full space-y-6 animate-fade-in">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
+        <div>
+          <h1 className="text-xl font-black text-slate-800 tracking-tight">Publish Slots</h1>
+          <p className="text-xs text-slate-400">Open availability for patients and remove unused dates.</p>
+        </div>
+
+        {message && (
+          <div className={`px-3 py-2 rounded-xl text-xs font-bold border ${
+            message.type === "success"
+              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+              : "bg-rose-50 text-rose-700 border-rose-200"
+          }`}>
+            {message.text}
+          </div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs h-fit">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+              <CalendarPlus size={18} />
+            </div>
+            <h2 className="font-black text-slate-800 text-sm">New Slot</h2>
+          </div>
+
+          <label className="block text-xs font-bold text-slate-500 mb-1.5">Available Date</label>
+          <input
+            type="date"
+            min={today}
+            value={bookingDate}
+            onChange={(event) => setBookingDate(event.target.value)}
+            className="w-full bg-slate-50 border border-slate-200 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+
+          <button
+            onClick={handlePublishSlot}
+            disabled={publishing || !bookingDate}
+            className="mt-4 w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl px-4 py-2.5 text-sm font-bold transition-colors cursor-pointer disabled:cursor-not-allowed"
+          >
+            <CalendarPlus size={16} />
+            {publishing ? "Publishing..." : "Publish Slot"}
+          </button>
+        </div>
+
+        <div className="lg:col-span-2 bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
+          <div className="p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 className="font-black text-slate-800 text-sm">Published Slots</h2>
+              <p className="text-xs text-slate-400 mt-0.5">{slots.length} slot{slots.length === 1 ? "" : "s"} visible</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <select
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value)}
+                className="bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 focus:outline-none"
+              >
+                <option value="">All</option>
+                <option value="available">Available</option>
+                <option value="booked">Booked</option>
+                <option value="blocked">Blocked</option>
+              </select>
+              <button
+                onClick={fetchSlots}
+                className="p-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-slate-600"
+                title="Refresh slots"
+              >
+                <RefreshCw size={15} />
+              </button>
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="flex items-center justify-center py-20">
+              <div className="w-8 h-8 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : slots.length === 0 ? (
+            <div className="py-20 text-center">
+              <Calendar size={36} className="mx-auto text-slate-200 mb-3" />
+              <p className="font-bold text-slate-700">No slots published</p>
+              <p className="text-xs text-slate-400 mt-1">Choose a date and publish your first availability.</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {slots.map((slot) => (
+                <div key={slot.id} className="p-4 flex items-center justify-between gap-3 hover:bg-slate-50 transition-colors">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-black text-slate-800 text-sm">
+                        {new Date(slot.bookingDate).toLocaleDateString(undefined, { dateStyle: "medium" })}
+                      </p>
+                      <span className={statusStyle(slot.status)}>{slot.status}</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-1">Slot ID #{slot.id}</p>
+                  </div>
+
+                  <button
+                    onClick={() => handleDeleteSlot(slot)}
+                    disabled={slot.status === "booked" || deletingId === slot.id}
+                    className="p-2 text-rose-600 hover:bg-rose-50 disabled:text-slate-300 disabled:hover:bg-transparent rounded-xl transition-colors cursor-pointer disabled:cursor-not-allowed"
+                    title={slot.status === "booked" ? "Booked slots cannot be deleted" : "Delete slot"}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

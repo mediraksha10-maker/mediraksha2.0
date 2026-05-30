@@ -159,6 +159,11 @@ Ref: "Hospital"."doctorId" < "Doctor"."Id"
 /api/doctor/info/update           PATCH
 /api/doctor/info/delete           DELETE
 
+# Required login
+# slot publish by doctor side
+/api/doctor/slot/all              GET       // all slots published by doctor
+/api/doctor/slot/publish          POST      // body { bookingDate }
+/api/doctor/slot/:id              DELETE    // delete available/blocked slot
 
 # Required login
 # meeting by doctor side
