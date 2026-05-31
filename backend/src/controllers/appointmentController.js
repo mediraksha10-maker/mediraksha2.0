@@ -20,6 +20,7 @@ export const getAllMeetings = async (req, res) => {
         d.speciality AS "speciality",
         d.hospital   AS "hospital",
         s."bookingDate",
+        s."slotTime" AS "availableSlotTime",
         s.status     AS "slotStatus"
        FROM "Appointment" a
        JOIN "Doctor" d ON a."doctorId" = d.id
@@ -57,6 +58,7 @@ export const getMeetingById = async (req, res) => {
         d.hospital   AS "hospital",
         d.number     AS "doctorContact",
         s."bookingDate",
+        s."slotTime" AS "availableSlotTime",
         s.status     AS "slotStatus"
        FROM "Appointment" a
        JOIN "Doctor" d ON a."doctorId" = d.id
@@ -114,15 +116,15 @@ export const deleteMeeting = async (req, res) => {
 };
 
 // POST /api/user/meetings/book
-// Body: { doctorId, slotId, appointmentDate, reasonOfAppointment }
+// Body: { doctorId, slotId, reasonOfAppointment }
 export const bookMeeting = async (req, res) => {
   const userId = req.user.id;
   const { doctorId, slotId, appointmentDate, reasonOfAppointment } = req.body;
 
-  if (!doctorId || !slotId || !appointmentDate) {
+  if (!doctorId || !slotId) {
     return res.status(400).json({
       success: false,
-      message: 'doctorId, slotId, and appointmentDate are required',
+      message: 'doctorId and slotId are required',
     });
   }
 
@@ -134,7 +136,7 @@ export const bookMeeting = async (req, res) => {
 
     // Lock the slot row to prevent race conditions
     const { rows: slot } = await client.query(
-      `SELECT id, status, "bookingDate" FROM "Slot"
+      `SELECT id, status, "bookingDate", "slotTime" FROM "Slot"
        WHERE id = $1 AND "doctorId" = $2 AND status = 'available'
        FOR UPDATE`,
       [slotId, doctorId]
@@ -145,11 +147,22 @@ export const bookMeeting = async (req, res) => {
       return res.status(409).json({ success: false, message: 'Slot is no longer available' });
     }
 
+    const selectedSlot = slot[0];
+    const selectedDate = selectedSlot.bookingDate.toISOString
+      ? selectedSlot.bookingDate.toISOString().split('T')[0]
+      : String(selectedSlot.bookingDate).split('T')[0];
+    const selectedTime = selectedSlot.slotTime || '09:00';
+
+    if (appointmentDate && appointmentDate !== selectedDate) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ success: false, message: 'appointmentDate does not match the selected slot.' });
+    }
+
     // Duplicate appointment guard
     const { rows: duplicate } = await client.query(
       `SELECT id FROM "Appointment"
        WHERE "userId" = $1 AND "doctorId" = $2 AND "appointmentDate" = $3 AND status != 'cancelled'`,
-      [userId, doctorId, appointmentDate]
+      [userId, doctorId, selectedDate]
     );
 
     if (duplicate.length > 0) {
@@ -169,10 +182,10 @@ export const bookMeeting = async (req, res) => {
     // FIX 11: Column list was wrapped in quotes making it a string literal, not columns
     // FIX 12: pg has no result.insertId — use RETURNING id instead
     const { rows: inserted } = await client.query(
-      `INSERT INTO "Appointment" ("userId", "doctorId", "slotId", "appointmentDate", "reasonOfAppointment", status)
-       VALUES ($1, $2, $3, $4, $5, 'pending')
+      `INSERT INTO "Appointment" ("userId", "doctorId", "slotId", "slotTime", "appointmentDate", "reasonOfAppointment", status)
+       VALUES ($1, $2, $3, $4, $5, $6, 'pending')
        RETURNING id`,
-      [userId, doctorId, slotId, appointmentDate, reasonOfAppointment || null]
+      [userId, doctorId, slotId, selectedTime, selectedDate, reasonOfAppointment || null]
     );
 
     await client.query('COMMIT');
@@ -212,10 +225,10 @@ export const getAvailableSlots = async (req, res) => {
     }
 
     const { rows: slots } = await pool.query(
-      `SELECT id, "bookingDate", status, created_at
+      `SELECT id, "bookingDate", "slotTime", status, created_at
        FROM "Slot"
        WHERE "doctorId" = $1 AND status = 'available' AND "bookingDate" >= $2
-       ORDER BY "bookingDate" ASC`,
+       ORDER BY "bookingDate" ASC, "slotTime" ASC`,
       [doctorId, fromDate]
     );
 

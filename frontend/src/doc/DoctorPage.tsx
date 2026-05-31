@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { User, LayoutDashboard, Calendar, Users, LogOut, Menu, X, CheckCircle, CalendarPlus, Trash2, RefreshCw } from "lucide-react";
+import { User, LayoutDashboard, Calendar, Users, LogOut, Menu, X, CalendarPlus, Trash2, RefreshCw, Clock } from "lucide-react";
 import { useNavigate } from "react-router";
 import api from "../api/Api";
 
@@ -147,13 +147,6 @@ export default function DoctorPage() {
                   <p className="text-sm text-slate-500">Track and manage your medical daily schedule cleanly.</p>
                 </div>
 
-                {/* Quick Metric Snapshot Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-                  <StatCard icon={<Calendar className="text-indigo-600" />} title="Today's Slots" count="12 Slots" color="bg-indigo-50" />
-                  <StatCard icon={<Users className="text-emerald-600" />} title="Total Patients" count="48 Users" color="bg-emerald-50" />
-                  <StatCard icon={<CheckCircle className="text-amber-600" />} title="Completed" count="8 Done" color="bg-amber-50" />
-                </div>
-
                 {/* Master quick access info banner */}
                 <div className="bg-white border border-slate-200 rounded-3xl p-8 text-center border-dashed">
                   <p className="text-slate-800 font-bold text-sm">Welcome to MediRaksha Clinical Portal</p>
@@ -191,13 +184,35 @@ export default function DoctorPage() {
 interface DoctorSlot {
   id: number;
   bookingDate: string;
+  slotTime: string;
   status: "available" | "booked" | "blocked";
   created_at: string;
 }
 
+interface WeeklyRule {
+  dayOfWeek: number;
+  label: string;
+  enabled: boolean;
+  startTime: string;
+  endTime: string;
+}
+
+const DEFAULT_WEEKLY_RULES: WeeklyRule[] = [
+  { dayOfWeek: 1, label: "Mon", enabled: true, startTime: "09:00", endTime: "17:00" },
+  { dayOfWeek: 2, label: "Tue", enabled: true, startTime: "09:00", endTime: "17:00" },
+  { dayOfWeek: 3, label: "Wed", enabled: true, startTime: "09:00", endTime: "17:00" },
+  { dayOfWeek: 4, label: "Thu", enabled: true, startTime: "09:00", endTime: "17:00" },
+  { dayOfWeek: 5, label: "Fri", enabled: true, startTime: "09:00", endTime: "17:00" },
+  { dayOfWeek: 6, label: "Sat", enabled: false, startTime: "10:00", endTime: "13:00" },
+  { dayOfWeek: 0, label: "Sun", enabled: false, startTime: "10:00", endTime: "13:00" },
+];
+
 function DoctorSlots() {
   const [slots, setSlots] = useState<DoctorSlot[]>([]);
-  const [bookingDate, setBookingDate] = useState<string>("");
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
+  const [slotDurationMinutes, setSlotDurationMinutes] = useState<number>(60);
+  const [weeklyRules, setWeeklyRules] = useState<WeeklyRule[]>(DEFAULT_WEEKLY_RULES);
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
   const [publishing, setPublishing] = useState<boolean>(false);
@@ -232,18 +247,39 @@ function DoctorSlots() {
     fetchSlots();
   }, [statusFilter]);
 
+  const updateRule = (dayOfWeek: number, changes: Partial<WeeklyRule>) => {
+    setWeeklyRules((prev) => prev.map((rule) => (
+      rule.dayOfWeek === dayOfWeek ? { ...rule, ...changes } : rule
+    )));
+  };
+
   const handlePublishSlot = async () => {
-    if (!bookingDate) {
-      showMessage("error", "Select a date before publishing.");
+    const enabledRules = weeklyRules.filter((rule) => rule.enabled);
+
+    if (!startDate || !endDate) {
+      showMessage("error", "Select a start and end date before publishing.");
+      return;
+    }
+
+    if (enabledRules.length === 0) {
+      showMessage("error", "Enable at least one working day.");
       return;
     }
 
     setPublishing(true);
     try {
-      const response = await api.post("/doctor/slot/publish", { bookingDate });
+      const response = await api.post("/doctor/slot/publish", {
+        startDate,
+        endDate,
+        slotDurationMinutes,
+        weeklyRules: enabledRules.map(({ dayOfWeek, startTime, endTime }) => ({ dayOfWeek, startTime, endTime })),
+      });
+
       if (response.data?.success) {
-        setSlots((prev) => [response.data.data, ...prev].sort((a, b) => a.bookingDate.localeCompare(b.bookingDate)));
-        setBookingDate("");
+        const created: DoctorSlot[] = response.data.data || [];
+        setSlots((prev) => [...created, ...prev].sort((a, b) => (
+          `${a.bookingDate} ${a.slotTime}`.localeCompare(`${b.bookingDate} ${b.slotTime}`)
+        )));
         showMessage("success", response.data.message || "Slot published.");
       }
     } catch (error: any) {
@@ -309,25 +345,85 @@ function DoctorSlots() {
             <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
               <CalendarPlus size={18} />
             </div>
-            <h2 className="font-black text-slate-800 text-sm">New Slot</h2>
+            <h2 className="font-black text-slate-800 text-sm">Weekly Availability</h2>
           </div>
 
-          <label className="block text-xs font-bold text-slate-500 mb-1.5">Available Date</label>
-          <input
-            type="date"
-            min={today}
-            value={bookingDate}
-            onChange={(event) => setBookingDate(event.target.value)}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-500 mb-1.5">Start Date</label>
+              <input
+                type="date"
+                min={today}
+                value={startDate}
+                onChange={(event) => {
+                  setStartDate(event.target.value);
+                  if (!endDate || endDate < event.target.value) setEndDate(event.target.value);
+                }}
+                className="w-full bg-slate-50 border border-slate-200 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-500 mb-1.5">End Date</label>
+              <input
+                type="date"
+                min={startDate || today}
+                value={endDate}
+                onChange={(event) => setEndDate(event.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+          </div>
+
+          <label className="block text-xs font-bold text-slate-500 mt-4 mb-1.5">Meeting Length</label>
+          <select
+            value={slotDurationMinutes}
+            onChange={(event) => setSlotDurationMinutes(Number(event.target.value))}
             className="w-full bg-slate-50 border border-slate-200 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
+          >
+            <option value={30}>30 minutes</option>
+            <option value={45}>45 minutes</option>
+            <option value={60}>1 hour</option>
+            <option value={90}>1.5 hours</option>
+            <option value={120}>2 hours</option>
+          </select>
+
+          <div className="mt-4 space-y-2">
+            {weeklyRules.map((rule) => (
+              <div key={rule.dayOfWeek} className="grid grid-cols-[64px_1fr_1fr] gap-2 items-center">
+                <label className="flex items-center gap-2 text-xs font-black text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={rule.enabled}
+                    onChange={(event) => updateRule(rule.dayOfWeek, { enabled: event.target.checked })}
+                    className="accent-indigo-600"
+                  />
+                  {rule.label}
+                </label>
+                <input
+                  type="time"
+                  value={rule.startTime}
+                  disabled={!rule.enabled}
+                  onChange={(event) => updateRule(rule.dayOfWeek, { startTime: event.target.value })}
+                  className="min-w-0 bg-slate-50 border border-slate-200 px-2 py-2 rounded-xl text-xs font-semibold text-slate-700 disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <input
+                  type="time"
+                  value={rule.endTime}
+                  disabled={!rule.enabled}
+                  onChange={(event) => updateRule(rule.dayOfWeek, { endTime: event.target.value })}
+                  className="min-w-0 bg-slate-50 border border-slate-200 px-2 py-2 rounded-xl text-xs font-semibold text-slate-700 disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+            ))}
+          </div>
 
           <button
             onClick={handlePublishSlot}
-            disabled={publishing || !bookingDate}
+            disabled={publishing || !startDate || !endDate}
             className="mt-4 w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl px-4 py-2.5 text-sm font-bold transition-colors cursor-pointer disabled:cursor-not-allowed"
           >
             <CalendarPlus size={16} />
-            {publishing ? "Publishing..." : "Publish Slot"}
+            {publishing ? "Publishing..." : "Generate Slots"}
           </button>
         </div>
 
@@ -377,6 +473,9 @@ function DoctorSlots() {
                       <p className="font-black text-slate-800 text-sm">
                         {new Date(slot.bookingDate).toLocaleDateString(undefined, { dateStyle: "medium" })}
                       </p>
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 bg-slate-100 rounded-md px-2 py-1">
+                        <Clock size={12} /> {slot.slotTime?.slice(0, 5) || "09:00"}
+                      </span>
                       <span className={statusStyle(slot.status)}>{slot.status}</span>
                     </div>
                     <p className="text-[11px] text-slate-400 mt-1">Slot ID #{slot.id}</p>
@@ -395,21 +494,6 @@ function DoctorSlots() {
             </div>
           )}
         </div>
-      </div>
-    </div>
-  );
-}
-
-/* ── Metrics Grid Layout Card Helper ── */
-function StatCard({ icon, title, count, color }: { icon: React.ReactNode; title: string; count: string; color: string }) {
-  return (
-    <div className="bg-white border border-slate-200 rounded-2xl p-5 flex items-center gap-4 shadow-xs">
-      <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${color}`}>
-        {icon}
-      </div>
-      <div>
-        <p className="text-xs font-bold uppercase tracking-wider text-slate-400">{title}</p>
-        <p className="text-slate-800 font-black text-xl tracking-tight mt-0.5">{count}</p>
       </div>
     </div>
   );

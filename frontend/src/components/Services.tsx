@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ClipboardMinus, CalendarCheck2, BriefcaseMedical, UserSearch, Search, ArrowRight } from "lucide-react";
+import { ClipboardMinus, CalendarCheck2, BriefcaseMedical, Search, ArrowRight } from "lucide-react";
 import Navbar from "./Navbar";
 import { useNavigate } from "react-router";
 
@@ -33,15 +33,6 @@ const quickActions: QuickAction[] = [
     style: "bg-blue-50 text-blue-600 ring-blue-100",
     view: "/appointment",
     accent: "blue"
-  },
-  {
-    id: 3,
-    title: "Doctor Availability",
-    icon: <UserSearch size={28} />,
-    description: "Check live shift timings and availability of your preferred doctors.",
-    style: "bg-indigo-50 text-indigo-600 ring-indigo-100",
-    view: "/doctoravailability",
-    accent: "indigo"
   },
   {
     id: 4,

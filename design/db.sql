@@ -45,6 +45,7 @@ CREATE TABLE "Slot" (
     "userId" INTEGER,
     "doctorId" INTEGER NOT NULL,
     "bookingDate" DATE NOT NULL,
+    "slotTime" TIME NOT NULL DEFAULT '09:00',
     "status" slot_status_enum DEFAULT 'available',
     "created_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -109,6 +110,9 @@ ALTER TABLE "Report"
   DROP COLUMN IF EXISTS "fileId",
   ADD COLUMN IF NOT EXISTS "fileData" TEXT,
   ADD COLUMN IF NOT EXISTS "mimeType" VARCHAR;
+
+ALTER TABLE "Slot"
+  ADD COLUMN IF NOT EXISTS "slotTime" TIME NOT NULL DEFAULT '09:00';
 -- ============================================================================
 -- 3. ADD FOREIGN KEY CONSTRAINTS
 -- ============================================================================
@@ -179,12 +183,13 @@ INSERT INTO User ("name", "email", "number", "age", "gender", "registeredDoctorI
 ('John Smith', 'john.smith@email.com', '555-5555', 52, 'male', NULL, 'mysecretpassword');
 
 -- Insert into Slot (Referencing Doctor IDs and User IDs)
-INSERT INTO Slot ("userId", "doctorId", "bookingDate", "status") VALUES
-(1, 3, '2026-05-20', 'booked'),
-(2, 5, '2026-05-21', 'booked'),
-(3, 4, '2026-05-22', 'booked'),
-(NULL, 1, '2026-05-23', 'available'),
-(NULL, 2, '2026-05-24', 'available');
+INSERT INTO Slot ("userId", "doctorId", "bookingDate", "slotTime", "status") VALUES
+(1, 3, '2026-05-20', '10:00', 'booked'),
+(2, 5, '2026-05-21', '14:30', 'booked'),
+(3, 4, '2026-05-22', '09:15', 'booked'),
+(NULL, 1, '2026-05-23', '09:00', 'available'),
+(NULL, 1, '2026-05-23', '10:00', 'available'),
+(NULL, 2, '2026-05-24', '11:00', 'available');
 
 -- Insert into Appointment (Referencing User, Doctor, and Slot IDs)
 INSERT INTO Appointment ("userId", "doctorId", "slotId", "requestGroupId", "slotTime", "appointmentDate", "reasonOfAppointment", "status") VALUES

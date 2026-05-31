@@ -1,5 +1,5 @@
 import { Toaster } from "react-hot-toast"
-import { Route, Routes } from "react-router"
+import { Navigate, Route, Routes } from "react-router"
 import { useEffect, useState } from "react"
 
 import DoctorPage from "./doc/DoctorPage"
@@ -18,7 +18,6 @@ import Upload from "./service/Upload"
 import Map from "./service/Map"
 import Hospital from "./service/Hospital"
 // import Health from "./service/Health" removing
-import DoctorAvailability from "./service/DoctorAvailability"
 import Disease from "./service/Disease"
 import Chat from "./service/Chat"
 import Appointment from "./service/Appointment"
@@ -65,7 +64,7 @@ function App() {
           {/* Login require */}
           <Route path="/upload" element={<Upload />} />
           <Route path="/appointment" element={<Appointment />} />
-          <Route path="/doctoravailability" element={<DoctorAvailability />} />
+          <Route path="/doctoravailability" element={<Navigate to="/appointment" replace />} />
           <Route path="/adddoctor" element={<AddDoctor />} />
 
         </Routes>

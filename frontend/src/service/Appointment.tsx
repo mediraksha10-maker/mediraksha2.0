@@ -18,6 +18,7 @@ interface Doctor {
 interface Slot {
   id: string;
   bookingDate: string;    // "YYYY-MM-DD"
+  slotTime: string;
   status: string;
 }
 
@@ -159,7 +160,6 @@ export default function AppointmentCalendar() {
       const response = await api.post('/user/meetings/book', {
         doctorId:            form.doctorId,
         slotId:              form.slotId,
-        appointmentDate:     form.appointmentDate,
         reasonOfAppointment: form.reasonOfAppointment || null,
       });
 
@@ -402,13 +402,14 @@ export default function AppointmentCalendar() {
                           ...prev,
                           slotId: e.target.value,
                           appointmentDate: chosen?.bookingDate || "",
+                          startTime: chosen?.slotTime || "",
                         }));
                       }}
                     >
                       <option value="" disabled>Select a slot</option>
                       {slots.map(s => (
                         <option key={s.id} value={s.id}>
-                          {new Date(s.bookingDate).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+                          {new Date(s.bookingDate).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} at {s.slotTime?.slice(0, 5) || '09:00'}
                         </option>
                       ))}
                     </select>
