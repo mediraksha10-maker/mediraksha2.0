@@ -1,65 +1,91 @@
-# Mediraksha
-A healthcare application having features to assist people for medication 
-1. Finding hospital
-2. AI consult
-3. Hospital resource
-4. Disease info
-5. Upload report
-6. Book appointment
-7. Get a doctor
+# 🏥 Mediraksha
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Status-Active-success?style=for-the-badge&logo=github" alt="Status" />
+  <img src="https://img.shields.io/badge/Frontend-React%20%2B%20TS-blue?style=for-the-badge&logo=react" alt="Frontend" />
+  <img src="https://img.shields.io/badge/Backend-Node.js%20%2B%20Express-green?style=for-the-badge&logo=node.js" alt="Backend" />
+  <img src="https://img.shields.io/badge/Database-PostgreSQL-blue?style=for-the-badge&logo=postgresql" alt="Database" />
+  <img src="https://img.shields.io/badge/Deployment-Docker-blue?style=for-the-badge&logo=docker" alt="Docker" />
+</p>
 
 ---
 
-## Pipeline Diagram:
-<img src="design/highleveldesign.png" alt="design" />
+## 🚀 Overview
+
+**Mediraksha** is an advanced, comprehensive healthcare ecosystem designed to bridge the gap between patients and medical solutions. By leveraging modern technology and AI, Mediraksha simplifies healthcare management, appointment scheduling, and instant medical consultations.
+
+### ✨ Key Features
+
+*   🔍 **Hospital Finder:** Locate nearby healthcare facilities effortlessly.
+*   🤖 **AI Consultation:** Instant, intelligent preliminary medical guidance.
+*   📊 **Hospital Resource Tracker:** Real-time visibility into available medical resources.
+*   📖 **Disease Information Hub:** A comprehensive knowledge base for symptoms and conditions.
+*   📁 **Report Management:** Securely upload and store your medical reports.
+*   📅 **Smart Booking:** Seamlessly book hospital appointments online.
+*   🩺 **Connect with Doctors:** Get in touch with specialized healthcare professionals.
 
 ---
 
-## Dockerfile
-dockerfile to create and manage the container of the application <br>
-1. /frontend/Dockerfile nginx based <br>
-2. /backend/Dockerfile nodejs layer <br>
-3. compose.yaml to combined services <br>
+## 🏗️ Architecture & Pipeline
+
+<p align="center">
+  <img src="design/highleveldesign.png" alt="High Level Design Pipeline" width="850" style="border-radius: 8px;" />
+</p>
 
 ---
 
-## Test Snapshot:
+## 🐳 Containerization & Deployment
+
+Mediraksha is fully containerized using Docker to ensure seamless deployment across development and production environments.
+
+*   🌐 **/frontend/Dockerfile** – Multi-stage build powered by **Nginx** for high-performance static serving.
+*   ⚙️ **/backend/Dockerfile** – Optimized **Node.js** environment for fast, asynchronous API processing.
+*   📦 **compose.yaml** – Multi-container orchestration to spin up the entire ecosystem with a single command (`docker compose up`).
+
+---
+
+## 📸 Application Interface (Snapshots)
+
 <details open>
-<summary>Sign up</summary>
-
-<img src="design/mr1.png" width="800">
-
+<summary>🔑 <b>Sign Up / Authentication</b></summary>
+<br>
+<img src="design/mr1.png" width="100%" style="border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);" alt="Sign Up Snapshot">
 </details>
 
 <details>
-<summary>Home</summary>
-
-<img src="design/mr2.png" width="800">
-
+<summary>🏠 <b>User Dashboard / Home</b></summary>
+<br>
+<img src="design/mr2.png" width="100%" style="border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);" alt="Home Dashboard Snapshot">
 </details>
 
 <details>
-<summary>Services</summary>
-
-<img src="design/mr3.png" width="800">
-
+<summary>🛠️ <b>Healthcare Services Portal</b></summary>
+<br>
+<img src="design/mr3.png" width="100%" style="border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);" alt="Services Snapshot">
 </details>
 
+---
+
+## 🔗 Quick Links & Resources
+
+| Resource | Link |
+| :--- | :--- |
+| 🌐 **Live Application** | [Launch Mediraksha App 🚀](https://mediraksha2-0-1.onrender.com/) |
+| 🗄️ **Database Schema Design** | [View DBdiagram.io 📊](https://dbdiagram.io/d/Mediraksha-69a16c88a3f0aa31e14af24b) |
+| 🔌 **API Architecture Board** | [View Miro Board 🗺️](https://miro.com/app/board/uXjVG3Ywa2M=/?share_link_id=206279430295) |
 
 ---
 
-## Quick Links
-**APP:** https://mediraksha2-0-1.onrender.com/ <br>
-**DB-design:** https://dbdiagram.io/d/Mediraksha-69a16c88a3f0aa31e14af24b <br>
-**API-design:** https://miro.com/app/board/uXjVG3Ywa2M=/?share_link_id=206279430295 <br>
+## 🛠️ Tech Stack
+
+Mediraksha is built using modern, reliable, and high-performance technologies:
+
+*   **Frontend UI:** `React.js` (v18+) with `TypeScript` for type safety and robust components.
+*   **Backend API:** `Node.js` with `Express.js` implementing secure RESTful APIs.
+*   **Database layer:** Cloud-hosted `PostgreSQL` for reliable, relational, and ACID-compliant data storage.
 
 ---
 
-## Technical stack
-**Frontend:** React + Typescript <br>
-**Backend:** Nodejs + Express <br>
-**Database:** Postgres cloud <br>
-
----
-
-## By Team Mediraksha
+<p align="center">
+  <b>Crafted with ❤️ by Team Mediraksha</b>
+</p>
