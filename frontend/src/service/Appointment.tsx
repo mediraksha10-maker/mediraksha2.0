@@ -16,7 +16,7 @@ interface Doctor {
 
 interface Slot {
   id: string;
-  bookingDate: string;    // "YYYY-MM-DD"
+  bookingDate: string;    // Raw from backend
   slotTime: string;
   status: string;
 }
@@ -35,7 +35,7 @@ interface FormState {
   doctorId: string;
   doctorName: string;
   slotId: string;         
-  appointmentDate: string;
+  appointmentDate: string; // Must strictly match backend slot shape
   startTime: string;
   reasonOfAppointment: string;
 }
@@ -50,7 +50,9 @@ export default function AppointmentCalendar() {
   const [meetings,     setMeetings]     = useState<Appointment[]>([]);
   const [doctorSearch, setDoctorSearch] = useState<string>("");
   const [doctors,      setDoctors]      = useState<Doctor[]>([]);
-  const [slots,        setSlots]        = useState<Slot[]>([]);   
+  const [allSlots,     setAllSlots]     = useState<Slot[]>([]); // Keeps all raw doctor slots
+  const [uniqueDates,  setUniqueDates]  = useState<string[]>([]); // Dynamic array of open dates
+  const [filteredSlots, setFilteredSlots] = useState<Slot[]>([]); // Slots for selected date
   const [loading,      setLoading]      = useState<boolean>(false);
   const [isFetching,   setIsFetching]   = useState<boolean>(true);
   const [error,        setError]        = useState<string>("");
@@ -67,7 +69,6 @@ export default function AppointmentCalendar() {
 
   const navigate = useNavigate();
 
-  // Fetch all scheduled meetings
   const fetchMeetings = async () => {
     try {
       setIsFetching(true);
@@ -86,7 +87,6 @@ export default function AppointmentCalendar() {
     fetchMeetings();
   }, [navigate]);
 
-  // Handle Doctor Search debounce
   useEffect(() => {
     if (!doctorSearch.trim()) { setDoctors([]); return; }
 
@@ -102,42 +102,62 @@ export default function AppointmentCalendar() {
     return () => clearTimeout(delay);
   }, [doctorSearch]);
 
-  const handleDoctorSelect = (doctor: Doctor) => {
-    setForm(prev => ({ 
-      ...prev, 
-      doctorId: doctor.id, 
-      doctorName: doctor.name, 
-      slotId: "", 
-      appointmentDate: "" 
-    }));
-    setDoctorSearch(`Dr. ${doctor.name} (${doctor.speciality})`);
-    setDoctors([]);
-    setSlots([]);
+  // Helper utility to reliably map timestamps down to standard YYYY-MM-DD
+  const formatBackendDate = (dateStr: string): string => {
+    if (!dateStr) return "";
+    return dateStr.split("T")[0];
   };
 
-  // Fetch slots automatically when Doctor AND Date are set
-  useEffect(() => {
-    const fetchSlotsForDate = async () => {
-      if (!form.doctorId || !form.appointmentDate) return;
-      
-      try {
-        const response = await api.get(`/user/meetings/slot/${form.doctorId}?date=${form.appointmentDate}`);
-        if (response.data?.success) {
-          setSlots(response.data.availableSlots || []);
-        }
-      } catch {
-        setSlots([]);
-      }
-    };
+  // 1. Fetching all open slots for selected doctor
+  const handleDoctorSelect = async (doctor: Doctor) => {
+    setForm({
+      doctorId: doctor.id,
+      doctorName: doctor.name,
+      slotId: "",
+      appointmentDate: "",
+      startTime: "",
+      reasonOfAppointment: "",
+    });
+    setDoctorSearch(`Dr. ${doctor.name} (${doctor.speciality})`);
+    setDoctors([]);
+    setAllSlots([]);
+    setUniqueDates([]);
+    setFilteredSlots([]);
+    setError("");
 
-    fetchSlotsForDate();
-  }, [form.doctorId, form.appointmentDate]);
+    try {
+      const response = await api.get(`/user/meetings/slot/${doctor.id}`);
+      if (response.data?.success) {
+        const fetchedSlots: Slot[] = response.data.availableSlots || [];
+        setAllSlots(fetchedSlots);
+
+        // Group dates sequentially based on real DB values
+        const dates = fetchedSlots.map(s => formatBackendDate(s.bookingDate));
+        const distinctDates = Array.from(new Set(dates));
+        setUniqueDates(distinctDates);
+      }
+    } catch {
+      setError("Failed to fetch available schedule for this doctor.");
+    }
+  };
+
+  // 2. Filter available time blocks whenever selected target date shifts
+  useEffect(() => {
+    if (!form.appointmentDate) {
+      setFilteredSlots([]);
+      return;
+    }
+    const matching = allSlots.filter(
+      s => formatBackendDate(s.bookingDate) === form.appointmentDate
+    );
+    setFilteredSlots(matching);
+  }, [form.appointmentDate, allSlots]);
 
   const handleSubmit = async (): Promise<void> => {
     setError("");
     setSuccessMsg("");
     if (!form.doctorId || !form.slotId || !form.appointmentDate) {
-      setError("Please pick a doctor, a date, and an available time slot.");
+      setError("Please pick a doctor, date, and time slot.");
       return;
     }
 
@@ -146,14 +166,14 @@ export default function AppointmentCalendar() {
       const response = await api.post('/user/meetings/book', {
         doctorId:            form.doctorId,
         slotId:              form.slotId,
-        appointmentDate:     form.appointmentDate,
+        appointmentDate:     form.appointmentDate, // Now matches backend selectedDate syntax
         reasonOfAppointment: form.reasonOfAppointment || null,
       });
 
       if (response.data?.success) {
         setSuccessMsg("Appointment scheduled successfully!");
         resetForm();
-        fetchMeetings(); // Refresh list
+        fetchMeetings();
       }
     } catch (err: any) {
       const msg = err.response?.data?.message || "Booking failed. Please try again.";
@@ -182,7 +202,9 @@ export default function AppointmentCalendar() {
   const resetForm = (): void => {
     setForm({ doctorId: "", doctorName: "", slotId: "", appointmentDate: "", startTime: "", reasonOfAppointment: "" });
     setDoctorSearch("");
-    setSlots([]);
+    setAllSlots([]);
+    setUniqueDates([]);
+    setFilteredSlots([]);
   };
 
   return (
@@ -199,7 +221,7 @@ export default function AppointmentCalendar() {
           </button>
           <div>
             <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Direct Booking Dashboard</h2>
-            <p className="text-slate-500 text-sm">Select a provider, pick your slot, and confirm immediately</p>
+            <p className="text-slate-500 text-sm">Select a provider, assign a slot, and confirm immediately</p>
           </div>
         </div>
 
@@ -248,34 +270,39 @@ export default function AppointmentCalendar() {
               )}
             </div>
 
-            {/* Date Picker Input */}
+            {/* Dynamic Date Selector Field */}
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                <CalIcon size={14}/> 2. Target Consultation Date
+                <CalIcon size={14}/> 2. Available Dates
               </label>
-              <input
-                type="date"
-                disabled={!form.doctorId}
+              <select
+                disabled={!form.doctorId || uniqueDates.length === 0}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all disabled:opacity-50"
                 value={form.appointmentDate}
-                onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                onChange={(e: ChangeEvent<HTMLSelectElement>) => {
                   setForm(prev => ({ ...prev, appointmentDate: e.target.value, slotId: "", startTime: "" }));
-                  setSlots([]);
                 }}
-              />
+              >
+                <option value="">{form.doctorId ? "Choose an available date" : "Select a doctor first"}</option>
+                {uniqueDates.map(dateStr => (
+                  <option key={dateStr} value={dateStr}>
+                    {new Date(dateStr).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
-          {/* Time Slot Selector Row */}
+          {/* Time Slot Selection Row */}
           {form.appointmentDate && (
             <div className="space-y-2 pt-2 border-t border-dashed border-slate-200">
               <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                <Clock size={14}/> 3. Assign Available Slot
+                <Clock size={14}/> 3. Choose Available Time
               </label>
               
-              {slots.length > 0 ? (
+              {filteredSlots.length > 0 ? (
                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
-                  {slots.map((s) => {
+                  {filteredSlots.map((s) => {
                     const isSelected = form.slotId === s.id;
                     return (
                       <button
@@ -295,7 +322,7 @@ export default function AppointmentCalendar() {
                 </div>
               ) : (
                 <p className="text-xs text-amber-600 italic py-2 px-3 bg-amber-50/60 rounded-xl border border-amber-100">
-                  No slots are set up or free for Dr. {form.doctorName.split('(')[0]} on this date.
+                  No active time slots are available for this specific day.
                 </p>
               )}
             </div>
@@ -325,7 +352,7 @@ export default function AppointmentCalendar() {
               onClick={handleSubmit}
               disabled={loading || !form.slotId}
             >
-              {loading ? "Processing Assignment..." : "Assign & Confirm Booking"}
+              {loading ? "Processing..." : "Confirm Booking"}
             </button>
           </div>
         </div>
