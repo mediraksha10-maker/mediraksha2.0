@@ -159,7 +159,7 @@ ALTER TABLE "Slot"
 -- ============================================================================
 
 -- Insert into Doctor
-INSERT INTO Doctor ("name", "email", "number", "age", "gender", "hospital", "speciality", "password") VALUES
+INSERT INTO "Doctor" ("name", "email", "number", "age", "gender", "hospital", "speciality", "password") VALUES
 ('Dr. Gregory House', 'house@diagnostics.com', '555-0101', 45, 'male', 'Princeton-Plainsboro', 'Diagnostic Medicine', 'hashed_pass_1'),
 ('Dr. Meredith Grey', 'meredith@seattlegrace.com', '555-0102', 38, 'female', 'Seattle Grace Hospital', 'General Surgery', 'hashed_pass_2'),
 ('Dr. John Watson', 'watson@bakerstreet.com', '555-0103', 40, 'male', 'St. Bartholomews', 'General Practice', 'hashed_pass_3'),
@@ -167,7 +167,7 @@ INSERT INTO Doctor ("name", "email", "number", "age", "gender", "hospital", "spe
 ('Dr. Stephen Strange', 'strange@kamartaj.com', '555-0105', 42, 'male', 'Metro-General Hospital', 'Neurosurgery', 'hashed_pass_5');
 
 -- Insert into Disease
-INSERT INTO Disease ("code", "name", "symtom", "solution") VALUES
+INSERT INTO "Disease" ("code", "name", "symtom", "solution") VALUES
 (101, 'Influenza (Flu)', 'Fever, chills, muscle aches, cough, fatigue', 'Rest, hydration, antiviral medication if caught early.'),
 (102, 'Acute Appendicitis', 'Severe abdominal pain starting near navel moving to lower right, nausea, fever', 'Emergency surgical removal of the appendix.'),
 (103, 'Hypertension', 'Often asymptomatic, occasional headaches, shortness of breath, dizziness', 'Lifestyle changes (diet, exercise) and antihypertensive medication.'),
@@ -175,7 +175,7 @@ INSERT INTO Disease ("code", "name", "symtom", "solution") VALUES
 (105, 'Type 2 Diabetes', 'Increased thirst, frequent urination, increased hunger, fatigue, blurry vision', 'Dietary modifications, regular exercise, metformin or insulin therapy.');
 
 -- Insert into User (Referencing Doctor IDs 1-5 created above)
-INSERT INTO User ("name", "email", "number", "age", "gender", "registeredDoctorId", "password") VALUES
+INSERT INTO "User" ("name", "email", "number", "age", "gender", "registeredDoctorId", "password") VALUES
 ('Sherlock Holmes', 'sherlock@bakerstreet.com', '555-1111', 34, 'male', 3, 'password123'),
 ('Tony Stark', 'tony@starkindustries.com', '555-2222', 48, 'male', 5, 'jarvis123'),
 ('Fox Mulder', 'mulder@fbi.gov', '555-3333', 37, 'male', 4, 'iwanttobelieve'),
@@ -183,7 +183,7 @@ INSERT INTO User ("name", "email", "number", "age", "gender", "registeredDoctorI
 ('John Smith', 'john.smith@email.com', '555-5555', 52, 'male', NULL, 'mysecretpassword');
 
 -- Insert into Slot (Referencing Doctor IDs and User IDs)
-INSERT INTO Slot ("userId", "doctorId", "bookingDate", "slotTime", "status") VALUES
+INSERT INTO "Slot" ("userId", "doctorId", "bookingDate", "slotTime", "status") VALUES
 (1, 3, '2026-05-20', '10:00', 'booked'),
 (2, 5, '2026-05-21', '14:30', 'booked'),
 (3, 4, '2026-05-22', '09:15', 'booked'),
@@ -192,7 +192,7 @@ INSERT INTO Slot ("userId", "doctorId", "bookingDate", "slotTime", "status") VAL
 (NULL, 2, '2026-05-24', '11:00', 'available');
 
 -- Insert into Appointment (Referencing User, Doctor, and Slot IDs)
-INSERT INTO Appointment ("userId", "doctorId", "slotId", "requestGroupId", "slotTime", "appointmentDate", "reasonOfAppointment", "status") VALUES
+INSERT INTO "Appointment" ("userId", "doctorId", "slotId", "requestGroupId", "slotTime", "appointmentDate", "reasonOfAppointment", "status") VALUES
 (1, 3, 1, 1001, '10:00:00', '2026-05-20', 'Routine checkup for a minor gunshot wound recovery.', 'confirmed'),
 (2, 5, 2, 1002, '14:30:00', '2026-05-21', 'Consultation regarding arc reactor localized chest discomfort.', 'confirmed'),
 (3, 4, 3, 1003, '09:15:00', '2026-05-22', 'Reviewing strange forensic pathology findings.', 'pending'),
@@ -206,7 +206,7 @@ INSERT INTO "Report" ("userId", "uploadedBy", "doctorId", "title", "category", "
 (4, 'Doctor Grey', 2, 'Pre-Op Ultrasound', 'scan', 4096, 'ZHVtbXk=', 'image/png', 'private', 'ultrasound_appendix.png');
 
 -- Insert into Hospital
-INSERT INTO Hospital ("name", "doctorId", "bed", "room", "oxygenCylinder") VALUES
+INSERT INTO "Hospital" ("name", "doctorId", "bed", "room", "oxygenCylinder") VALUES
 ('Princeton-Plainsboro Teaching Hospital', 1, 500, 150, 200),
 ('Seattle Grace Hospital', 2, 400, 120, 180),
 ('St. Bartholomews Hospital', 3, 250, 80, 90),
