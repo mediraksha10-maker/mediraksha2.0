@@ -44,24 +44,18 @@ Mediraksha is fully containerized using Docker to ensure seamless deployment acr
 
 ---
 
-## 📸 Application Interface (Snapshots)
+## 📸 Application Highlights:
 
-<details open>
+<details >
 <summary>🔑 <b>Sign Up / Authentication</b></summary>
-<br>
-<img src="design/mr1.png" width="100%" style="border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);" alt="Sign Up Snapshot">
 </details>
 
 <details>
 <summary>🏠 <b>User Dashboard / Home</b></summary>
-<br>
-<img src="design/mr2.png" width="100%" style="border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);" alt="Home Dashboard Snapshot">
 </details>
 
 <details>
 <summary>🛠️ <b>Healthcare Services Portal</b></summary>
-<br>
-<img src="design/mr3.png" width="100%" style="border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);" alt="Services Snapshot">
 </details>
 
 ---
@@ -70,7 +64,6 @@ Mediraksha is fully containerized using Docker to ensure seamless deployment acr
 
 | Resource | Link |
 | :--- | :--- |
-| 🌐 **Live Application** | [Launch Mediraksha App 🚀](https://mediraksha2-0-1.onrender.com/) |
 | 🗄️ **Database Schema Design** | [View DBdiagram.io 📊](https://dbdiagram.io/d/Mediraksha-69a16c88a3f0aa31e14af24b) |
 | 🔌 **API Architecture Board** | [View Miro Board 🗺️](https://miro.com/app/board/uXjVG3Ywa2M=/?share_link_id=206279430295) |
 
