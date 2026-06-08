@@ -68,6 +68,10 @@ export default function MyDetail() {
       try {
         setLoading(true);
         const response = await api.get("/user/info/detail");
+
+        if(response.status == 401) {
+          navigate("/auth");
+        }
         
         if (response.data && response.data.success) {
           // FIX 1: was storing entire response.data object; must use response.data.data
