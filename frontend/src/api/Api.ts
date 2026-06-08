@@ -2,7 +2,7 @@ import axios from "axios";
 
 const instance = axios.create({
   // import.meta.env is used for Vite
-  baseURL: "https://mediraksha2-0.onrender.com/api",
+  baseURL: import.meta.env.VITE_API_BASE_URL,
   headers: {
     "Content-Type": "application/json",
   },

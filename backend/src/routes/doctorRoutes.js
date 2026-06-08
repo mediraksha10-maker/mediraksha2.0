@@ -30,6 +30,7 @@ import {
   deleteSlot
 } from '../controllers/doctorSlotController.js';
 
+import { getUserReport } from '../controllers/doctorReportController.js';
 
 // ── DOCTOR PROFILE CHANNELS ──
 // Resolves to: /doctor/info/detail, /doctor/info/update, etc.
@@ -63,6 +64,9 @@ router.delete('/meetings/:id', deleteMeeting);
 router.get('/user/my', getAllPatients);
 router.get('/user/:id', getPatientById);
 router.delete('/user/:id', removePatient);
+
+// report
+router.get('/userreport', getUserReport)
 
 
 export default router;

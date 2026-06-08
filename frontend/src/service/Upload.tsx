@@ -1,7 +1,7 @@
 import { useState, useEffect, type ChangeEvent } from 'react';
 import { 
   ArrowLeft, Upload, FileText, Trash2, 
-  Eye, FileUp, Shield, Tag, Info 
+  Eye, FileUp, Shield, Tag, Info, User 
 } from "lucide-react";
 import { useNavigate } from 'react-router';
 import api from '../api/Api';
@@ -18,6 +18,13 @@ interface MedicalFile {
   created_at: string;
 }
 
+// Added Linked Doctor Type Interface
+interface LinkedDoctor {
+  id: string | number;
+  name: string;
+  speciality: string;
+}
+
 interface MessageState {
   text: string;
   type: 'success' | 'error';
@@ -31,10 +38,12 @@ export default function UploadReport() {
   // --- Form State ---
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState<string>('');
-  
   const [category, setCategory] = useState<string>('lab');
   const [visibility, setVisibility] = useState<'private' | 'doctor'>('private');
   
+  // --- Connected Doctor State ---
+  const [assignedDoctor, setAssignedDoctor] = useState<LinkedDoctor | null>(null);
+
   // --- UI & Data State ---
   const [message, setMessage] = useState<MessageState | null>(null);
   const [files, setFiles] = useState<MedicalFile[]>([]);
@@ -52,6 +61,7 @@ export default function UploadReport() {
   };
 
   useEffect(() => {
+    // 1. Fetch user's historical reports
     const fetchReports = async () => {
       try {
         setIsFetching(true);
@@ -62,8 +72,7 @@ export default function UploadReport() {
         }
       } catch (error: any) {
         console.error('Error fetching reports:', error);
-        const status = error.response?.status;
-        if (status === 401) {
+        if (error.response?.status === 401) {
           navigate('/auth');
         } else {
           setFetchError('Failed to load your medical records. Please try again.');
@@ -73,7 +82,21 @@ export default function UploadReport() {
       }
     };
 
+    // 2. Fetch active assigned doctor profile connection
+    const fetchCurrentDoctor = async () => {
+      try {
+        const response = await api.get('/user/doctor/my');
+        if (response.data?.success) {
+          setAssignedDoctor(response.data.data);
+        }
+      } catch (error: any) {
+        console.log('No registered primary clinician profile active yet.', error.response?.status);
+        // Soft catch: If 404, assignedDoctor stays null which is safe behavior
+      }
+    };
+
     fetchReports();
+    fetchCurrentDoctor();
   }, [navigate]);
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>): void => {
@@ -103,6 +126,12 @@ export default function UploadReport() {
       return;
     }
 
+    // Protection check: prevent sharing configuration bugs if no link is configured
+    if (visibility === 'doctor' && !assignedDoctor) {
+      showMessage('You have no registered clinician profile to share this with. Link a doctor first.', 'error');
+      return;
+    }
+
     setIsUploading(true);
     try {
       const formData = new FormData();
@@ -110,6 +139,11 @@ export default function UploadReport() {
       formData.append('title', title);
       formData.append('category', category);
       formData.append('visibility', visibility);
+      
+      // Pass doctorId if visibility is configured for doctor access
+      if (visibility === 'doctor' && assignedDoctor) {
+        formData.append('doctorId', String(assignedDoctor.id));
+      }
 
       const response = await api.post('/user/report/upload', formData, {
         headers: {
@@ -121,7 +155,7 @@ export default function UploadReport() {
         setFiles((prev) => [response.data.data, ...prev]);
         showMessage('Medical record uploaded successfully!', 'success');
 
-        // Reset form
+        // Reset form states
         setFile(null);
         setTitle('');
         setCategory('lab');
@@ -198,7 +232,6 @@ export default function UploadReport() {
     setPreviewType(null);
   };
 
-  // Helper utility function to make database values look clean on the frontend table
   const formatCategoryLabel = (cat: string) => {
     if (!cat) return 'Other';
     return cat.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase());
@@ -290,6 +323,18 @@ export default function UploadReport() {
                       <option value="private">Private (Me Only)</option>
                       <option value="doctor">Visible to Doctor</option>
                     </select>
+                    
+                    {/* NEW: Contextual helper showing which doctor will receive access */}
+                    {visibility === 'doctor' && (
+                      <div className="mt-2 p-2.5 rounded-xl border border-blue-100 bg-blue-50/50 flex items-center gap-2 text-xs text-blue-700 animate-fade-in">
+                        <User size={14} className="shrink-0" />
+                        {assignedDoctor ? (
+                          <p>Will be shared with <span className="font-bold">Dr. {assignedDoctor.name}</span> ({assignedDoctor.speciality})</p>
+                        ) : (
+                          <p className="text-rose-600 font-semibold">No active doctor linked. Please link a profile first.</p>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* File Dropzone */}
@@ -323,7 +368,7 @@ export default function UploadReport() {
                   <button 
                     className="w-full flex items-center justify-center bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold py-3 rounded-xl transition-all shadow-md text-sm cursor-pointer disabled:cursor-not-allowed"
                     onClick={handleUpload}
-                    disabled={!file || !title || isUploading}
+                    disabled={!file || !title || isUploading || (visibility === 'doctor' && !assignedDoctor)}
                   >
                     {isUploading ? 'Processing...' : 'Upload Record'}
                   </button>
