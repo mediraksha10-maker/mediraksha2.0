@@ -35,7 +35,7 @@ interface FormState {
   doctorId: string;
   doctorName: string;
   slotId: string;         
-  appointmentDate: string; // Must strictly match backend slot shape
+  appointmentDate: string; // Strictly matches backend slot shape
   startTime: string;
   reasonOfAppointment: string;
 }
@@ -45,6 +45,8 @@ const STATUS_CONFIG = {
   confirmed: { class: "bg-emerald-50 text-emerald-700 border-emerald-200" },
   cancelled: { class: "bg-rose-50 text-rose-700 border-rose-200" },
 };
+
+const APP_TIME_ZONE = "Asia/Kolkata";
 
 export default function AppointmentCalendar() {
   const [meetings,     setMeetings]     = useState<Appointment[]>([]);
@@ -102,10 +104,38 @@ export default function AppointmentCalendar() {
     return () => clearTimeout(delay);
   }, [doctorSearch]);
 
-  // Helper utility to reliably map timestamps down to standard YYYY-MM-DD
   const formatBackendDate = (dateStr: string): string => {
     if (!dateStr) return "";
-    return dateStr.split("T")[0];
+    if (!dateStr.includes("T")) return dateStr;
+
+    const parsedDate = new Date(dateStr);
+    if (Number.isNaN(parsedDate.getTime())) return dateStr.split("T")[0];
+
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: APP_TIME_ZONE,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(parsedDate);
+
+    const year = parts.find((part) => part.type === "year")?.value;
+    const month = parts.find((part) => part.type === "month")?.value;
+    const day = parts.find((part) => part.type === "day")?.value;
+
+    return year && month && day ? `${year}-${month}-${day}` : dateStr.split("T")[0];
+  };
+
+  const formatToFriendlyLocalDate = (dateStr: string): string => {
+    if (!dateStr) return "";
+    const cleanDate = formatBackendDate(dateStr);
+    const [year, month, day] = cleanDate.split('-');
+    
+    // Explicit month array matching human-readable index (1-12)
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const monthName = months[parseInt(month, 10) - 1] || "";
+    
+    // Fallback if formatting breaks, otherwise outputs pure text: "Jun 9, 2026"
+    return monthName ? `${monthName} ${parseInt(day, 10)}, ${year}` : cleanDate;
   };
 
   // 1. Fetching all open slots for selected doctor
@@ -156,17 +186,19 @@ export default function AppointmentCalendar() {
   const handleSubmit = async (): Promise<void> => {
     setError("");
     setSuccessMsg("");
-    if (!form.doctorId || !form.slotId || !form.appointmentDate) {
-      setError("Please pick a doctor, date, and time slot.");
+    if (!form.doctorId || !form.slotId || !form.appointmentDate || !form.reasonOfAppointment) {
+      setError("Please pick a doctor, date, and time slot and add the reason.");
       return;
     }
 
     setLoading(true);
     try {
+      const normalizedSubmissionDate = formatBackendDate(form.appointmentDate);
+
       const response = await api.post('/user/meetings/book', {
         doctorId:            form.doctorId,
         slotId:              form.slotId,
-        appointmentDate:     form.appointmentDate, // Now matches backend selectedDate syntax
+        appointmentDate:     normalizedSubmissionDate, 
         reasonOfAppointment: form.reasonOfAppointment || null,
       });
 
@@ -286,7 +318,7 @@ export default function AppointmentCalendar() {
                 <option value="">{form.doctorId ? "Choose an available date" : "Select a doctor first"}</option>
                 {uniqueDates.map(dateStr => (
                   <option key={dateStr} value={dateStr}>
-                    {new Date(dateStr).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                    {formatToFriendlyLocalDate(dateStr)}
                   </option>
                 ))}
               </select>
@@ -330,7 +362,7 @@ export default function AppointmentCalendar() {
 
           {/* Reason Field */}
           <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-700">Reason for Appointment (Optional)</label>
+            <label className="text-xs font-bold text-slate-700">Reason for Appointment </label>
             <textarea
               className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all h-20 resize-none"
               placeholder="Provide a quick note regarding health requirements..."
@@ -394,7 +426,10 @@ export default function AppointmentCalendar() {
 
                   <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-50">
                     <div className="flex gap-4 text-xs font-semibold text-slate-500">
-                      <span className="flex items-center gap-1"><CalIcon size={13} /> {new Date(m.appointmentDate).toLocaleDateString()}</span>
+                      <span className="flex items-center gap-1">
+                        <CalIcon size={13} /> 
+                        {formatToFriendlyLocalDate(m.appointmentDate)}
+                      </span>
                       <span className="flex items-center gap-1"><Clock size={13} /> {m.slotTime}</span>
                     </div>
 

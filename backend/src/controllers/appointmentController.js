@@ -12,14 +12,14 @@ export const getAllMeetings = async (req, res) => {
     const { rows: appointments } = await pool.query(
       `SELECT 
         a.id,
-        a."appointmentDate",
+        TO_CHAR(a."appointmentDate", 'YYYY-MM-DD') AS "appointmentDate",
         a."slotTime",
         a.status,
         a."reasonOfAppointment",
         d.name       AS "doctorName",
         d.speciality AS "speciality",
         d.hospital   AS "hospital",
-        s."bookingDate",
+        TO_CHAR(s."bookingDate", 'YYYY-MM-DD') AS "bookingDate",
         s."slotTime" AS "availableSlotTime",
         s.status     AS "slotStatus"
        FROM "Appointment" a
@@ -49,7 +49,7 @@ export const getMeetingById = async (req, res) => {
     const { rows } = await pool.query(
       `SELECT 
         a.id,
-        a."appointmentDate",
+        TO_CHAR(a."appointmentDate", 'YYYY-MM-DD') AS "appointmentDate",
         a."slotTime",
         a.status,
         a."reasonOfAppointment",
@@ -57,7 +57,7 @@ export const getMeetingById = async (req, res) => {
         d.speciality AS "speciality",
         d.hospital   AS "hospital",
         d.number     AS "doctorContact",
-        s."bookingDate",
+        TO_CHAR(s."bookingDate", 'YYYY-MM-DD') AS "bookingDate",
         s."slotTime" AS "availableSlotTime",
         s.status     AS "slotStatus"
        FROM "Appointment" a
@@ -136,7 +136,7 @@ export const bookMeeting = async (req, res) => {
 
     // Lock the slot row to prevent race conditions
     const { rows: slot } = await client.query(
-      `SELECT id, status, "bookingDate", "slotTime" FROM "Slot"
+      `SELECT id, status, TO_CHAR("bookingDate", 'YYYY-MM-DD') AS "bookingDate", "slotTime" FROM "Slot"
        WHERE id = $1 AND "doctorId" = $2 AND status = 'available'
        FOR UPDATE`,
       [slotId, doctorId]
@@ -148,9 +148,7 @@ export const bookMeeting = async (req, res) => {
     }
 
     const selectedSlot = slot[0];
-    const selectedDate = selectedSlot.bookingDate.toISOString
-      ? selectedSlot.bookingDate.toISOString().split('T')[0]
-      : String(selectedSlot.bookingDate).split('T')[0];
+    const selectedDate = selectedSlot.bookingDate;
     const selectedTime = selectedSlot.slotTime || '09:00';
 
     if (appointmentDate && appointmentDate !== selectedDate) {
@@ -225,7 +223,7 @@ export const getAvailableSlots = async (req, res) => {
     }
 
     const { rows: slots } = await pool.query(
-      `SELECT id, "bookingDate", "slotTime", status, created_at
+      `SELECT id, TO_CHAR("bookingDate", 'YYYY-MM-DD') AS "bookingDate", "slotTime", status, created_at
        FROM "Slot"
        WHERE "doctorId" = $1 AND status = 'available' AND "bookingDate" >= $2
        ORDER BY "bookingDate" ASC, "slotTime" ASC`,
