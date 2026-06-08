@@ -20,6 +20,14 @@ interface HospitalData {
   image?: string;
 }
 
+interface BedBooking {
+  id: number;
+  hospitalName: string;
+  bedsRequested: number;
+  status: "active" | "cancelled";
+  created_at: string;
+}
+
 export default function Hospital() {
   // --- Core UI State Management ---
   const [hospitals, setHospitals] = useState<HospitalData[]>([]);
@@ -27,6 +35,9 @@ export default function Hospital() {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [bedBookings, setBedBookings] = useState<BedBooking[]>([]);
+  const [bookingHospitalId, setBookingHospitalId] = useState<number | null>(null);
+  const [notice, setNotice] = useState<string>("");
 
   const navigate = useNavigate();
 
@@ -58,6 +69,23 @@ export default function Hospital() {
     fetchHospitals();
   }, []);
 
+  const fetchBedBookings = async () => {
+    try {
+      const response = await api.get("/hospital/bed-bookings/my");
+      if (response.data?.success) {
+        setBedBookings(response.data.data || []);
+      }
+    } catch (err: any) {
+      if (err.response?.status !== 401) {
+        console.error("Error fetching bed bookings:", err);
+      }
+    }
+  };
+
+  useEffect(() => {
+    fetchBedBookings();
+  }, []);
+
   // --- Helpers for Normalizing Missing Database Fields ---
   const getSpecialties = (hospital: HospitalData): string[] => {
     if (!hospital.specialties) return ["General Medicine", "Emergency Care"]; 
@@ -75,6 +103,54 @@ export default function Hospital() {
     const specialtyMatch = specs.includes(searchQuery.toLowerCase());
     return nameMatch || specialtyMatch;
   });
+
+  const requestBed = async (hospital: HospitalData) => {
+    setBookingHospitalId(hospital.id);
+    setNotice("");
+
+    try {
+      const response = await api.post(`/hospital/${hospital.id}/bed-bookings`, {
+        bedsRequested: 1,
+        hospitalName: hospital.name,
+      });
+
+      if (response.data?.success) {
+        setNotice(`Bed request created for ${hospital.name}.`);
+        setHospitals((prev) => prev.map((item) => (
+          item.id === hospital.id ? { ...item, bed: Math.max((item.bed || 0) - 1, 0) } : item
+        )));
+        fetchBedBookings();
+      }
+    } catch (err: any) {
+      if (err.response?.status === 401) {
+        navigate("/auth");
+        return;
+      }
+      setNotice(err.response?.data?.message || "Could not create bed request.");
+    } finally {
+      setBookingHospitalId(null);
+    }
+  };
+
+  const cancelBedBooking = async (booking: BedBooking) => {
+    if (!window.confirm("Cancel this bed booking request?")) return;
+
+    try {
+      const response = await api.delete(`/hospital/bed-bookings/${booking.id}`);
+      if (response.data?.success) {
+        setNotice("Bed booking cancelled.");
+        fetchBedBookings();
+        const refreshed = await api.get("/hospital/all");
+        if (refreshed.data?.success && Array.isArray(refreshed.data.data)) {
+          setHospitals(refreshed.data.data);
+          const updatedSelected = refreshed.data.data.find((item: HospitalData) => item.id === selectedHospital?.id);
+          if (updatedSelected) setSelectedHospital(updatedSelected);
+        }
+      }
+    } catch (err: any) {
+      setNotice(err.response?.data?.message || "Could not cancel bed booking.");
+    }
+  };
 
   // --- Loading State ---
   if (loading) {
@@ -113,6 +189,11 @@ export default function Hospital() {
         <ArrowLeft size={20} />
       </button>
       <div className="max-w-6xl mx-auto">
+        {notice && (
+          <div className="mb-4 bg-white border border-slate-200 text-slate-700 rounded-xl px-4 py-3 text-sm font-semibold shadow-xs">
+            {notice}
+          </div>
+        )}
         
         {/* ── CONDITIONAL RENDER: DETAILS VIEW ── */}
         {selectedHospital ? (
@@ -184,14 +265,41 @@ export default function Hospital() {
                     <ShieldCheck size={18} /> Verified Medical Hub Partner
                   </div>
                   <button 
-                    onClick={() => alert(`Connecting with admission desk at ${selectedHospital.name}`)}
-                    className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm px-6 py-3 rounded-xl shadow-md transition-all cursor-pointer"
+                    onClick={() => requestBed(selectedHospital)}
+                    disabled={!selectedHospital.bed || bookingHospitalId === selectedHospital.id}
+                    className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold text-sm px-6 py-3 rounded-xl shadow-md transition-all cursor-pointer disabled:cursor-not-allowed"
                   >
-                    Request Admission Info
+                    {bookingHospitalId === selectedHospital.id ? "Requesting..." : "Book 1 Bed"}
                   </button>
                 </div>
               </div>
             </div>
+
+            {bedBookings.length > 0 && (
+              <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-xs">
+                <h3 className="font-black text-slate-800 mb-3">My Bed Requests</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {bedBookings.map((booking) => (
+                    <div key={booking.id} className="border border-slate-100 rounded-xl p-3 flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-bold text-slate-800">{booking.hospitalName}</p>
+                        <p className="text-xs text-slate-400">{booking.bedsRequested} bed · {new Date(booking.created_at).toLocaleDateString()}</p>
+                      </div>
+                      {booking.status !== "cancelled" ? (
+                        <button
+                          onClick={() => cancelBedBooking(booking)}
+                          className="text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg px-3 py-1.5"
+                        >
+                          Cancel
+                        </button>
+                      ) : (
+                        <span className="text-xs font-bold text-slate-400">Cancelled</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           
@@ -250,9 +358,16 @@ export default function Hospital() {
                         <span className="flex items-center gap-1 text-emerald-600">
                           <UserCheck size={14} /> {hospital.bed || 0} Total Beds
                         </span>
-                        <span className="text-slate-400 font-semibold">
-                          Rooms: {hospital.room || 0}
-                        </span>
+                        <button
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            requestBed(hospital);
+                          }}
+                          disabled={!hospital.bed || bookingHospitalId === hospital.id}
+                          className="text-indigo-600 bg-indigo-50 hover:bg-indigo-100 disabled:text-slate-400 disabled:bg-slate-100 font-black px-2.5 py-1 rounded-lg"
+                        >
+                          {bookingHospitalId === hospital.id ? "Sending" : "Book Bed"}
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -263,6 +378,32 @@ export default function Hospital() {
                 <Building2 size={48} className="mx-auto mb-3 opacity-30 text-slate-400" />
                 <p className="text-slate-700 font-bold text-base">No Matching Hospitals Found</p>
                 <p className="text-slate-400 text-xs mt-0.5">Refine your active search filters or verify query spelling.</p>
+              </div>
+            )}
+
+            {bedBookings.length > 0 && (
+              <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-xs">
+                <h3 className="font-black text-slate-800 mb-3">My Bed Requests</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {bedBookings.map((booking) => (
+                    <div key={booking.id} className="border border-slate-100 rounded-xl p-3 flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-bold text-slate-800 line-clamp-1">{booking.hospitalName}</p>
+                        <p className="text-xs text-slate-400">{booking.bedsRequested} bed · {new Date(booking.created_at).toLocaleDateString()}</p>
+                      </div>
+                      {booking.status !== "cancelled" ? (
+                        <button
+                          onClick={() => cancelBedBooking(booking)}
+                          className="text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg px-3 py-1.5"
+                        >
+                          Cancel
+                        </button>
+                      ) : (
+                        <span className="text-xs font-bold text-slate-400">Cancelled</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>

@@ -95,6 +95,22 @@ CREATE TABLE "Hospital" (
     "updated_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Bed Booking Table
+CREATE TABLE "BedBooking" (
+    "id" SERIAL PRIMARY KEY,
+    "userId" INTEGER NOT NULL,
+    "hospitalId" INTEGER,
+    "hospitalPlaceId" VARCHAR,
+    "hospitalName" VARCHAR NOT NULL,
+    "bedsRequested" INTEGER NOT NULL DEFAULT 1,
+    "contactName" VARCHAR,
+    "contactNumber" VARCHAR,
+    "notes" VARCHAR,
+    "status" VARCHAR NOT NULL DEFAULT 'active',
+    "created_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Diseases Table
 CREATE TABLE "Disease" (
     "id" SERIAL PRIMARY KEY,

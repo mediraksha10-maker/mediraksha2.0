@@ -1,6 +1,11 @@
 import { pool } from '../config/db.js';
 
 const VALID_APPOINTMENT_STATUSES = new Set(['pending', 'confirmed', 'cancelled', 'completed']);
+const REPORT_METADATA_COLUMNS = `
+  r."id", r."userId", r."uploadedBy", r."doctorId", r."title", r."category",
+  r."fileSize", r."mimeType", r."visibility", r."originalFileName",
+  r."created_at", r."updated_at"
+`;
 
 // GET /api/doctor/meetings/all
 export const getAllMeetings = async (req, res) => {
@@ -14,11 +19,11 @@ export const getAllMeetings = async (req, res) => {
   try {
     let query = `
       SELECT
-        a.id AS "Id", a."appointmentDate", a."slotTime", a.status, a."reasonOfAppointment",
+        a.id AS "Id", TO_CHAR(a."appointmentDate", 'YYYY-MM-DD') AS "appointmentDate", a."slotTime", a.status, a."reasonOfAppointment",
         a."created_at",
         u.id AS "patientId", u.name AS "patientName", u.email AS "patientEmail",
         u.number AS "patientContact", u.age AS "patientAge", u.gender AS "patientGender",
-        s."bookingDate", s.status AS "slotStatus"
+        TO_CHAR(s."bookingDate", 'YYYY-MM-DD') AS "bookingDate", s.status AS "slotStatus"
       FROM "Appointment" a
       JOIN "User" u ON a."userId" = u.id
       JOIN "Slot" s ON a."slotId" = s.id
@@ -61,11 +66,11 @@ export const getMeetingById = async (req, res) => {
   try {
     const { rows: appointments } = await pool.query(
       `SELECT
-        a.id AS "Id", a."appointmentDate", a."slotTime", a.status, a."reasonOfAppointment",
+        a.id AS "Id", TO_CHAR(a."appointmentDate", 'YYYY-MM-DD') AS "appointmentDate", a."slotTime", a.status, a."reasonOfAppointment",
         a."requestGroupId", a."created_at", a."updated_at",
         u.id AS "patientId", u.name AS "patientName", u.email AS "patientEmail",
         u.number AS "patientContact", u.age AS "patientAge", u.gender AS "patientGender",
-        s.id AS "slotId", s."bookingDate", s.status AS "slotStatus"
+        s.id AS "slotId", TO_CHAR(s."bookingDate", 'YYYY-MM-DD') AS "bookingDate", s.status AS "slotStatus"
        FROM "Appointment" a
        JOIN "User" u ON a."userId" = u.id
        JOIN "Slot" s ON a."slotId" = s.id
@@ -140,5 +145,149 @@ export const deleteMeeting = async (req, res) => {
     res.status(500).json({ success: false, message: 'Internal server error' });
   } finally {
     client.release();
+  }
+};
+
+export const confirmMeeting = async (req, res) => {
+  const doctorId = req.user.id;
+  const { id } = req.params;
+
+  try {
+    const { rows } = await pool.query(
+      `UPDATE "Appointment"
+       SET status = 'confirmed', "updated_at" = NOW()
+       WHERE id = $1 AND "doctorId" = $2 AND status = 'pending'
+       RETURNING id`,
+      [id, doctorId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Pending appointment not found.' });
+    }
+
+    return res.status(200).json({ success: true, message: 'Appointment confirmed.' });
+  } catch (error) {
+    console.error('confirmMeeting error:', error);
+    return res.status(500).json({ success: false, message: 'Unable to confirm appointment.' });
+  }
+};
+
+export const completeMeeting = async (req, res) => {
+  const doctorId = req.user.id;
+  const { id } = req.params;
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const { rows: appointments } = await client.query(
+      `SELECT id, "userId", status FROM "Appointment"
+       WHERE id = $1 AND "doctorId" = $2
+       FOR UPDATE`,
+      [id, doctorId]
+    );
+
+    if (appointments.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ success: false, message: 'Appointment not found.' });
+    }
+
+    const appointment = appointments[0];
+    if (appointment.status === 'cancelled') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ success: false, message: 'Cancelled appointments cannot be completed.' });
+    }
+
+    await client.query(
+      `UPDATE "Appointment" SET status = 'completed', "updated_at" = NOW() WHERE id = $1`,
+      [id]
+    );
+
+    const { rowCount: deletedReports } = await client.query(
+      `DELETE FROM "Report"
+       WHERE "userId" = $1
+         AND visibility = 'doctor'
+         AND ("doctorId" IS NULL OR "doctorId" = $2)`,
+      [appointment.userId, doctorId]
+    );
+
+    await client.query('COMMIT');
+    return res.status(200).json({
+      success: true,
+      message: 'Appointment completed. Shared reports were removed.',
+      deletedReports
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('completeMeeting error:', error);
+    return res.status(500).json({ success: false, message: 'Unable to complete appointment.' });
+  } finally {
+    client.release();
+  }
+};
+
+export const getMeetingReports = async (req, res) => {
+  const doctorId = req.user.id;
+  const { id } = req.params;
+
+  try {
+    const { rows: appointments } = await pool.query(
+      `SELECT "userId" FROM "Appointment" WHERE id = $1 AND "doctorId" = $2`,
+      [id, doctorId]
+    );
+
+    if (appointments.length === 0) {
+      return res.status(404).json({ success: false, message: 'Appointment not found.' });
+    }
+
+    const { rows: reports } = await pool.query(
+      `SELECT ${REPORT_METADATA_COLUMNS}
+       FROM "Report" r
+       WHERE r."userId" = $1
+         AND r.visibility = 'doctor'
+         AND (r."doctorId" IS NULL OR r."doctorId" = $2)
+       ORDER BY r."created_at" DESC`,
+      [appointments[0].userId, doctorId]
+    );
+
+    return res.status(200).json({ success: true, count: reports.length, data: reports });
+  } catch (error) {
+    console.error('getMeetingReports error:', error);
+    return res.status(500).json({ success: false, message: 'Unable to load appointment reports.' });
+  }
+};
+
+export const getMeetingReportById = async (req, res) => {
+  const doctorId = req.user.id;
+  const { id, reportId } = req.params;
+
+  try {
+    const { rows: appointments } = await pool.query(
+      `SELECT "userId" FROM "Appointment" WHERE id = $1 AND "doctorId" = $2`,
+      [id, doctorId]
+    );
+
+    if (appointments.length === 0) {
+      return res.status(404).json({ success: false, message: 'Appointment not found.' });
+    }
+
+    const { rows: reports } = await pool.query(
+      `SELECT ${REPORT_METADATA_COLUMNS}, r."fileData"
+       FROM "Report" r
+       WHERE r.id = $1
+         AND r."userId" = $2
+         AND r.visibility = 'doctor'
+         AND (r."doctorId" IS NULL OR r."doctorId" = $3)`,
+      [reportId, appointments[0].userId, doctorId]
+    );
+
+    if (reports.length === 0) {
+      return res.status(404).json({ success: false, message: 'Report not found or not shared with this doctor.' });
+    }
+
+    return res.status(200).json({ success: true, data: reports[0] });
+  } catch (error) {
+    console.error('getMeetingReportById error:', error);
+    return res.status(500).json({ success: false, message: 'Unable to load report preview.' });
   }
 };

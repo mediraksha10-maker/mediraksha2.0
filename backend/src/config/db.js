@@ -8,7 +8,7 @@ dns.setDefaultResultOrder('ipv4first');
 
 const { Pool } = pkg;
 
-const isLocalhost = process.env.DB_URL.includes('localhost') || process.env.DB_URL.includes('127.0.0.1');
+const isLocalhost = process.env.DB_URL.includes('localhost') || process.env.DB_URL.includes('127.0.0.1') || process.env.DB_URL.includes('database');
 
 const pool = new Pool({
     connectionString: process.env.DB_URL,

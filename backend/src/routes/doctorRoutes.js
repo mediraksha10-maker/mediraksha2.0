@@ -9,7 +9,11 @@ import {
 } from '../controllers/doctorController.js';
 
 import { 
+  completeMeeting,
+  confirmMeeting,
   getAllMeetings, 
+  getMeetingReportById,
+  getMeetingReports,
   getMeetingById, 
   deleteMeeting 
 } from '../controllers/doctorMeetingController.js';
@@ -45,6 +49,10 @@ router.delete('/slot/:id', deleteSlot);
 // Resolves to: /doctor/meetings/all, /doctor/meetings/:id
 // Note: Hardcoded collection endpoints stay grouped safely above parameter routes
 router.get('/meetings/all', getAllMeetings);
+router.get('/meetings/:id/reports', getMeetingReports);
+router.get('/meetings/:id/reports/:reportId', getMeetingReportById);
+router.patch('/meetings/:id/confirm', confirmMeeting);
+router.patch('/meetings/:id/complete', completeMeeting);
 router.get('/meetings/:id', getMeetingById);
 router.delete('/meetings/:id', deleteMeeting);
 

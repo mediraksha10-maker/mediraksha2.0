@@ -2,8 +2,9 @@ import { useEffect, useState, useRef } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
-import { ArrowLeft, MapPin, Navigation, LocateFixed, Search } from "lucide-react";
-import { Link } from "react-router";
+import { ArrowLeft, BedDouble, MapPin, Navigation, LocateFixed, Search } from "lucide-react";
+import { Link, useNavigate } from "react-router";
+import api from "../api/Api";
 
 /* ---------------- TYPES ---------------- */
 interface Hospital {
@@ -12,6 +13,9 @@ interface Hospital {
   lon: number;
   name: string;
   distance: number;
+  address?: string;
+  placeId?: string;
+  source?: "geoapify" | "nominatim";
 }
 
 interface FlyToHospitalProps {
@@ -69,7 +73,10 @@ export default function Map() {
   const [hoveredHospital, setHoveredHospital] = useState<Hospital | null>(null);
   const [selectedRange, setSelectedRange] = useState<number>(5);
   const [loading, setLoading] = useState<boolean>(false);
+  const [bookingHospitalId, setBookingHospitalId] = useState<number | string | null>(null);
+  const [notice, setNotice] = useState<string>("");
   const markerRefs = useRef<Record<string | number, L.Marker>>({});
+  const navigate = useNavigate();
 
   useEffect(() => {
     navigator.geolocation.getCurrentPosition(
@@ -82,10 +89,36 @@ export default function Map() {
     if (!position) return;
     setLoading(true);
     const [lat, lon] = position;
-    const viewbox = `${lon - 0.15},${lat + 0.15},${lon + 0.15},${lat - 0.15}`;
-    const url = `https://nominatim.openstreetmap.org/search?format=json&q=hospital&limit=50&viewbox=${viewbox}&bounded=1`;
 
     try {
+      const geoapify = await api.get("/hospital/geoapify/search", {
+        params: {
+          lat,
+          lon,
+          radius: selectedRange * 1000,
+          limit: 50,
+        },
+      });
+
+      const geoapifyPlaces: any[] = geoapify.data?.data || [];
+      const formatted: Hospital[] = geoapifyPlaces
+        .map((place: any, index: number): Hospital => ({
+          id: place.placeId || place.id || index,
+          placeId: place.placeId || place.id,
+          lat: Number(place.lat),
+          lon: Number(place.lon),
+          name: place.name,
+          address: place.address,
+          source: "geoapify",
+          distance: getDistanceInKm(lat, lon, Number(place.lat), Number(place.lon)),
+        }))
+        .sort((a, b) => a.distance - b.distance);
+
+      setHospitals(formatted);
+      setNotice("Geoapify hospital lookup loaded.");
+    } catch (e) {
+      const viewbox = `${lon - 0.15},${lat + 0.15},${lon + 0.15},${lat - 0.15}`;
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=hospital&limit=50&viewbox=${viewbox}&bounded=1`;
       const res = await fetch(url, { headers: { "User-Agent": "MediRaksha/1.0" } });
       const data: Array<{
         place_id: number;
@@ -95,18 +128,19 @@ export default function Map() {
       }> = await res.json();
 
       const formatted: Hospital[] = data
-        .map((place, index) => ({
+        .map((place, index): Hospital => ({
           id: place.place_id ?? index,
           lat: parseFloat(place.lat),
           lon: parseFloat(place.lon),
           name: place.display_name,
+          address: place.display_name,
+          source: "nominatim",
           distance: getDistanceInKm(lat, lon, parseFloat(place.lat), parseFloat(place.lon)),
         }))
         .sort((a, b) => a.distance - b.distance);
 
       setHospitals(formatted);
-    } catch (e) {
-      console.error(e);
+      setNotice("Geoapify is unavailable, so the open map fallback was used.");
     }
     setLoading(false);
   };
@@ -117,6 +151,32 @@ export default function Map() {
     if (!position) return;
     const url = `https://www.google.com/maps/dir/?api=1&origin=${position[0]},${position[1]}&destination=${hospital.lat},${hospital.lon}&travelmode=driving`;
     window.open(url, "_blank");
+  };
+
+  const requestBed = async (hospital: Hospital): Promise<void> => {
+    setBookingHospitalId(hospital.id);
+    setNotice("");
+
+    try {
+      const response = await api.post("/hospital/geoapify/bed-bookings", {
+        bedsRequested: 1,
+        hospitalPlaceId: hospital.placeId || String(hospital.id),
+        hospitalName: hospital.name.split(",")[0],
+        notes: hospital.address || hospital.name,
+      });
+
+      if (response.data?.success) {
+        setNotice(`Bed request created for ${hospital.name.split(",")[0]}.`);
+      }
+    } catch (error: any) {
+      if (error.response?.status === 401) {
+        navigate("/auth");
+        return;
+      }
+      setNotice(error.response?.data?.message || "Could not create bed request.");
+    } finally {
+      setBookingHospitalId(null);
+    }
   };
 
   return (
@@ -163,6 +223,11 @@ export default function Map() {
           </button>
         </div>
       </header>
+      {notice && (
+        <div className="bg-white border-b border-slate-200 px-6 py-2 text-xs font-semibold text-slate-600">
+          {notice}
+        </div>
+      )}
 
       {/* --- MAIN CONTENT AREA --- */}
       <div className="flex flex-1 overflow-hidden">
@@ -215,6 +280,16 @@ export default function Map() {
                   >
                     Directions
                   </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      requestBed(hospital);
+                    }}
+                    disabled={bookingHospitalId === hospital.id}
+                    className="text-[10px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-100 px-3 py-1 rounded-lg hover:bg-emerald-600 hover:text-white disabled:opacity-50 transition-all"
+                  >
+                    {bookingHospitalId === hospital.id ? "Sending" : "Bed"}
+                  </button>
                 </div>
               </div>
             ))}
@@ -256,6 +331,14 @@ export default function Map() {
                         className="mt-3 w-full bg-indigo-600 text-white py-2 rounded-lg text-xs font-bold shadow-lg shadow-indigo-100"
                       >
                         Open in Google Maps
+                      </button>
+                      <button
+                        onClick={() => requestBed(hospital)}
+                        disabled={bookingHospitalId === hospital.id}
+                        className="mt-2 w-full bg-emerald-600 text-white py-2 rounded-lg text-xs font-bold shadow-lg shadow-emerald-100 disabled:opacity-50 flex items-center justify-center gap-1"
+                      >
+                        <BedDouble size={13} />
+                        {bookingHospitalId === hospital.id ? "Requesting..." : "Request Bed"}
                       </button>
                     </div>
                   </Popup>

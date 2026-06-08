@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Calendar, Clock, User, FileText, XCircle, AlertCircle, Trash2, Filter, Eye, RefreshCw } from "lucide-react";
+import { Calendar, CheckCircle, Clock, User, FileText, XCircle, AlertCircle, Trash2, Filter, Eye, RefreshCw } from "lucide-react";
 import api from "../api/Api"; // Your configured Axios instance
 
 interface Appointment {
@@ -17,11 +17,27 @@ interface Appointment {
   slotStatus: string;
 }
 
+interface SharedReport {
+  id: number;
+  title: string;
+  category: string;
+  mimeType?: string;
+  originalFileName?: string;
+  fileData?: string;
+  created_at: string;
+}
+
+type PreviewType = "image" | "pdf" | "other" | null;
+
 export default function DoctorMeetings() {
   const [meetings, setMeetings] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
+  const [actionId, setActionId] = useState<number | null>(null);
   const [selectedMeeting, setSelectedMeeting] = useState<Appointment | null>(null);
+  const [sharedReports, setSharedReports] = useState<SharedReport[]>([]);
+  const [previewFile, setPreviewFile] = useState<string | null>(null);
+  const [previewType, setPreviewType] = useState<PreviewType>(null);
 
   // Filter States
   const [statusFilter, setStatusFilter] = useState<string>("");
@@ -61,9 +77,15 @@ export default function DoctorMeetings() {
   // --- Fetch detailed context for single modal view ---
   const handleViewDetails = async (id: number) => {
     try {
-      const response = await api.get(`/doctor/meetings/${id}`);
+      const [response, reportsResponse] = await Promise.all([
+        api.get(`/doctor/meetings/${id}`),
+        api.get(`/doctor/meetings/${id}/reports`),
+      ]);
       if (response.data && response.data.success) {
         setSelectedMeeting(response.data.data);
+      }
+      if (reportsResponse.data?.success) {
+        setSharedReports(reportsResponse.data.data || []);
       }
     } catch (error: any) {
       alert(error.response?.data?.message || "Could not retrieve appointment details.");
@@ -92,9 +114,67 @@ export default function DoctorMeetings() {
     }
   };
 
+  const updateMeetingStatus = async (id: number, action: "confirm" | "complete") => {
+    const prompt = action === "complete"
+      ? "Mark this appointment complete? Doctor-shared reports for this patient will be deleted."
+      : "Confirm this appointment?";
+    if (!window.confirm(prompt)) return;
+
+    setActionId(id);
+    try {
+      const response = await api.patch(`/doctor/meetings/${id}/${action}`);
+      if (response.data?.success) {
+        alert(response.data.message || "Appointment updated.");
+        await fetchMeetings();
+        if (selectedMeeting?.Id === id) {
+          if (action === "complete") {
+            setSelectedMeeting({ ...selectedMeeting, status: "completed" });
+            setSharedReports([]);
+          } else {
+            setSelectedMeeting({ ...selectedMeeting, status: "confirmed" });
+          }
+        }
+      }
+    } catch (error: any) {
+      alert(error.response?.data?.message || "Failed to update appointment.");
+    } finally {
+      setActionId(null);
+    }
+  };
+
+  const getPreviewType = (mimeType?: string, originalFileName = ""): PreviewType => {
+    if (mimeType === "application/pdf" || /\.pdf$/i.test(originalFileName)) return "pdf";
+    if (mimeType?.startsWith("image/") || /\.(jpg|jpeg|png|gif|webp)$/i.test(originalFileName)) return "image";
+    return "other";
+  };
+
+  const handleReportPreview = async (report: SharedReport) => {
+    if (!selectedMeeting) return;
+
+    try {
+      const response = await api.get(`/doctor/meetings/${selectedMeeting.Id}/reports/${report.id}`);
+      const fullReport: SharedReport = response.data.data;
+      if (!fullReport?.fileData) {
+        alert("Report file data is missing.");
+        return;
+      }
+      setPreviewType(getPreviewType(fullReport.mimeType, fullReport.originalFileName));
+      setPreviewFile(`data:${fullReport.mimeType || "application/octet-stream"};base64,${fullReport.fileData}`);
+    } catch (error: any) {
+      alert(error.response?.data?.message || "Could not preview report.");
+    }
+  };
+
   const formatAppointmentTime = (slotTime: string | null) => {
     if (!slotTime) return "Date slot";
     return slotTime.slice(0, 5);
+  };
+
+  const formatAppointmentDate = (date: string) => {
+    if (!date) return "—";
+    const [year, month, day] = date.split("T")[0].split("-");
+    const parsed = new Date(Number(year), Number(month) - 1, Number(day));
+    return Number.isNaN(parsed.getTime()) ? date : parsed.toLocaleDateString(undefined, { dateStyle: "medium" });
   };
 
   // Helper Badge Colors for Meeting Status
@@ -178,7 +258,7 @@ export default function DoctorMeetings() {
                   <span className={getStatusBadge(meeting.status)}>{meeting.status}</span>
                   <div className="flex items-center gap-1 text-xs font-semibold text-slate-500">
                     <Calendar size={13} />
-                    <span>{new Date(meeting.appointmentDate).toLocaleDateString(undefined, { dateStyle: 'medium' })}</span>
+                    <span>{formatAppointmentDate(meeting.appointmentDate)}</span>
                   </div>
                   <div className="flex items-center gap-1 text-xs font-semibold text-slate-500">
                     <Clock size={13} />
@@ -210,6 +290,29 @@ export default function DoctorMeetings() {
                 </button>
 
                 {meeting.status !== 'completed' && meeting.status !== 'cancelled' && (
+                  <>
+                  {meeting.status === 'pending' && (
+                    <button
+                      disabled={actionId === meeting.Id}
+                      onClick={() => updateMeetingStatus(meeting.Id, "confirm")}
+                      className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-indigo-50 hover:bg-indigo-100 disabled:opacity-50 text-indigo-600 rounded-xl text-xs font-bold transition-all cursor-pointer border border-indigo-100"
+                      title="Confirm Appointment"
+                    >
+                      <CheckCircle size={14} />
+                      <span>Confirm</span>
+                    </button>
+                  )}
+                  {meeting.status === 'confirmed' && (
+                    <button
+                      disabled={actionId === meeting.Id}
+                      onClick={() => updateMeetingStatus(meeting.Id, "complete")}
+                      className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-50 text-emerald-600 rounded-xl text-xs font-bold transition-all cursor-pointer border border-emerald-100"
+                      title="Complete Appointment"
+                    >
+                      <CheckCircle size={14} />
+                      <span>Complete</span>
+                    </button>
+                  )}
                   <button
                     disabled={cancellingId === meeting.Id}
                     onClick={() => handleCancelMeeting(meeting.Id)}
@@ -219,6 +322,7 @@ export default function DoctorMeetings() {
                     <Trash2 size={14} />
                     <span>{cancellingId === meeting.Id ? "Denying..." : "Deny"}</span>
                   </button>
+                  </>
                 )}
               </div>
             </div>
@@ -258,7 +362,7 @@ export default function DoctorMeetings() {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="bg-slate-50 rounded-xl p-3">
                     <p className="text-[10px] uppercase text-slate-400 font-bold">Date</p>
-                    <p className="font-bold text-slate-800 mt-0.5">{new Date(selectedMeeting.appointmentDate).toLocaleDateString()}</p>
+                    <p className="font-bold text-slate-800 mt-0.5">{formatAppointmentDate(selectedMeeting.appointmentDate)}</p>
                   </div>
                   <div className="bg-slate-50 rounded-xl p-3">
                     <p className="text-[10px] uppercase text-slate-400 font-bold">Time Window</p>
@@ -274,6 +378,29 @@ export default function DoctorMeetings() {
                 </p>
               </div>
 
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Shared Reports</p>
+                {sharedReports.length > 0 ? (
+                  <div className="space-y-2">
+                    {sharedReports.map((report) => (
+                      <button
+                        key={report.id}
+                        onClick={() => handleReportPreview(report)}
+                        className="w-full flex items-center justify-between gap-3 bg-slate-50 hover:bg-indigo-50 border border-slate-100 rounded-xl p-3 text-left transition-colors"
+                      >
+                        <span className="min-w-0">
+                          <span className="block text-sm font-bold text-slate-800 truncate">{report.title || report.originalFileName}</span>
+                          <span className="block text-[10px] text-slate-400 uppercase font-bold">{report.category || "other"} · {new Date(report.created_at).toLocaleDateString()}</span>
+                        </span>
+                        <Eye size={15} className="text-indigo-600 shrink-0" />
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400 bg-slate-50 rounded-xl p-3">No doctor-visible reports are shared for this appointment.</p>
+                )}
+              </div>
+
               <div className="flex items-center justify-between border-t border-slate-100 pt-4 mt-2">
                 <div>
                   <span className="text-[10px] font-bold text-slate-400 uppercase">Current Status</span>
@@ -281,14 +408,65 @@ export default function DoctorMeetings() {
                 </div>
                 
                 {selectedMeeting.status !== 'completed' && selectedMeeting.status !== 'cancelled' && (
-                  <button
-                    onClick={() => handleCancelMeeting(selectedMeeting.Id)}
-                    className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
-                  >
-                    <AlertCircle size={14} /> Deny Appointment
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {selectedMeeting.status === 'pending' && (
+                      <button
+                        onClick={() => updateMeetingStatus(selectedMeeting.Id, "confirm")}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                      >
+                        <CheckCircle size={14} /> Confirm
+                      </button>
+                    )}
+                    {selectedMeeting.status === 'confirmed' && (
+                      <button
+                        onClick={() => updateMeetingStatus(selectedMeeting.Id, "complete")}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                      >
+                        <CheckCircle size={14} /> Complete
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleCancelMeeting(selectedMeeting.Id)}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                    >
+                      <AlertCircle size={14} /> Deny
+                    </button>
+                  </div>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {previewFile && (
+        <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md flex items-center justify-center z-60 p-4 md:p-10">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-full flex flex-col overflow-hidden">
+            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-white">
+              <div className="flex items-center gap-2">
+                <FileText className="text-indigo-600" size={20} />
+                <span className="font-bold text-slate-800 text-sm md:text-base">Patient Report Preview</span>
+              </div>
+              <button
+                className="w-8 h-8 rounded-full border border-slate-200 text-slate-400 hover:bg-slate-50 flex items-center justify-center text-sm font-semibold transition-colors"
+                onClick={() => {
+                  setPreviewFile(null);
+                  setPreviewType(null);
+                }}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="flex-1 bg-slate-100 overflow-auto flex items-center justify-center">
+              {previewType === "image" && (
+                <img src={previewFile} alt="Report preview" className="max-w-full max-h-full object-contain p-2 rounded-xl" />
+              )}
+              {previewType === "pdf" && (
+                <iframe src={previewFile} className="w-full h-full border-none" title="Report PDF Preview" />
+              )}
+              {previewType === "other" && (
+                <div className="text-center p-10 text-slate-600 font-medium">This report type cannot be previewed inline.</div>
+              )}
             </div>
           </div>
         </div>
