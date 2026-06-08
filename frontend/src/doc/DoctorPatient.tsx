@@ -12,7 +12,6 @@ interface Patient {
   created_at: string;
 }
 
-// Added Report interface mapping to your backend schema
 interface Report {
   id: number;
   userId: number;
@@ -20,8 +19,12 @@ interface Report {
   category: "lab" | "prescription" | "scan" | "other";
   fileSize: number;
   mimeType: string;
+  fileData?: string; // Appended to handle single-file Base64 payload fetches
+  originalFileName: string;
   created_at: string;
 }
+
+type PreviewType = 'image' | 'pdf' | 'other' | null;
 
 export default function DoctorPatients() {
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -30,10 +33,15 @@ export default function DoctorPatients() {
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [actionId, setActionId] = useState<string | number | null>(null);
 
-  // --- New Report States ---
+  // --- Report Workspace States ---
   const [activeReportPatient, setActiveReportPatient] = useState<Patient | null>(null);
   const [reports, setReports] = useState<Report[]>([]);
   const [loadingReports, setLoadingReports] = useState<boolean>(false);
+
+  // --- New Core Preview States ---
+  const [previewFile, setPreviewFile] = useState<string | null>(null);
+  const [previewType, setPreviewType] = useState<PreviewType>(null);
+  const [previewTitle, setPreviewTitle] = useState<string>("");
 
   const fetchPatients = async () => {
     try {
@@ -52,14 +60,11 @@ export default function DoctorPatients() {
     }
   };
 
-  // --- New Function: Fetch Patient Reports ---
   const handleViewReports = async (patient: Patient) => {
     setActiveReportPatient(patient);
     setLoadingReports(true);
     setReports([]);
     try {
-      // Assuming route uses query params: /doctor/userreport?userId=id
-      // Adjust endpoint string to `/doctor/userreport/${patient.id}` if using path variables
       const response = await api.get(`/doctor/userreport`, {
         params: { userId: patient.id }
       });
@@ -72,6 +77,41 @@ export default function DoctorPatients() {
     } finally {
       setLoadingReports(false);
     }
+  };
+
+  // --- New Preview Parser & Fetch Workflow ---
+  const getPreviewType = (mimeType?: string, originalFileName = ''): PreviewType => {
+    if (mimeType === 'application/pdf' || /\.pdf$/i.test(originalFileName)) return 'pdf';
+    if (mimeType?.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp)$/i.test(originalFileName)) return 'image';
+    return 'other';
+  };
+
+  const handlePreviewReport = async (reportId: number) => {
+    try {
+      // Re-using single report fetch route. If your doctor scope requires a special endpoint,
+      // update this URL path to match your specific gateway structure (e.g., `/doctor/report/${reportId}`)
+      const response = await api.get(`/user/report/${reportId}`);
+      const report: Report = response.data.data;
+
+      if (!report?.fileData) {
+        alert('File binary contents are missing for this clinical file.');
+        return;
+      }
+
+      const type = getPreviewType(report.mimeType, report.originalFileName);
+      setPreviewType(type);
+      setPreviewTitle(report.title || report.originalFileName);
+      setPreviewFile(`data:${report.mimeType || 'application/octet-stream'};base64,${report.fileData}`);
+    } catch (error: any) {
+      console.error('Failed to parse document stream:', error);
+      alert(error.response?.data?.message || 'Unauthorized or unable to retrieve file data stream.');
+    }
+  };
+
+  const closePreview = (): void => {
+    setPreviewFile(null);
+    setPreviewType(null);
+    setPreviewTitle("");
   };
 
   useEffect(() => {
@@ -104,7 +144,6 @@ export default function DoctorPatients() {
     p.email.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // Helper to cleanly format storage footprint units
   const formatBytes = (bytes: number) => {
     if (!bytes) return "0 Bytes";
     const k = 1024;
@@ -145,13 +184,17 @@ export default function DoctorPatients() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {reports.map((report) => (
-              <div key={report.id} className="bg-white border border-slate-200 rounded-2xl p-5 hover:shadow-xs transition-all flex items-start gap-4">
-                <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
+              <div 
+                key={report.id} 
+                onClick={() => handlePreviewReport(report.id)}
+                className="bg-white border border-slate-200 rounded-2xl p-5 hover:shadow-md hover:border-indigo-300 transition-all flex items-start gap-4 cursor-pointer relative group"
+              >
+                <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
                   <FileText size={18} />
                 </div>
                 <div className="min-w-0 flex-1 space-y-1">
                   <div className="flex items-start justify-between gap-2">
-                    <h3 className="text-slate-800 font-bold text-sm truncate" title={report.title}>{report.title}</h3>
+                    <h3 className="text-slate-800 font-bold text-sm truncate pr-4" title={report.title}>{report.title}</h3>
                     <span className="text-[10px] uppercase font-black tracking-wider px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 shrink-0">
                       {report.category}
                     </span>
@@ -161,8 +204,50 @@ export default function DoctorPatients() {
                     <span className="flex items-center gap-1"><HardDrive size={11} /> {formatBytes(report.fileSize)}</span>
                   </div>
                 </div>
+                <div className="absolute right-4 bottom-4 opacity-0 group-hover:opacity-100 text-indigo-600 transition-opacity text-xs font-bold flex items-center gap-1">
+                  <Eye size={14} /> Preview
+                </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* --- GLOBAL PREVIEW MODAL SANDBOX --- */}
+        {previewFile && (
+          <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md flex items-center justify-center z-50 p-4 md:p-10">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl h-full flex flex-col overflow-hidden animate-scale-up">
+              <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-white">
+                <div className="flex items-center gap-2 min-w-0">
+                  <FileText className="text-indigo-600 shrink-0" size={20} />
+                  <span className="font-bold text-slate-800 text-sm md:text-base truncate">
+                    Previewing: {previewTitle}
+                  </span>
+                </div>
+                <button
+                  className="w-8 h-8 rounded-full border border-slate-200 text-slate-400 hover:bg-slate-50 flex items-center justify-center text-sm font-semibold transition-colors cursor-pointer"
+                  onClick={closePreview}
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="flex-1 bg-slate-100 overflow-auto flex items-center justify-center">
+                {previewType === 'image' && (
+                  <img src={previewFile} alt="Medical Document Snapshot" className="max-w-full max-h-full object-contain p-4 select-none" />
+                )}
+                {previewType === 'pdf' && (
+                  <iframe src={previewFile} className="w-full h-full border-none" title="Clinical PDF Stream View" />
+                )}
+                {previewType === 'other' && (
+                  <div className="text-center p-10">
+                    <div className="p-6 bg-white rounded-2xl shadow-xs inline-block">
+                      <p className="mb-2 text-slate-800 font-bold">Unsupported Sandbox Extension</p>
+                      <p className="text-xs text-slate-400 mb-4">This specific attachment encoding cannot be initialized natively in line.</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
       </div>
