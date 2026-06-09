@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef, type ChangeEvent } from "react";
 import { Bot, ArrowLeft, Send, Sparkles, User, RefreshCw } from "lucide-react";
 import { useNavigate } from "react-router";
 import api from '../api/Api'; // Importing your configured Axios instance
+import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
+import MicButton from '../components/MicButton';
 
 /* ---------------- TYPES ---------------- */
 interface Message {
@@ -27,9 +29,31 @@ export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState<string>("");
   const [isTyping, setIsTyping] = useState<boolean>(false);
-  
+
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const navigate = useNavigate();
+
+  /* ── Speech recognition ── */
+  const {
+    transcript,
+    isListening,
+    isSupported: isMicSupported,
+    startListening,
+    stopListening,
+    resetTranscript,
+  } = useSpeechRecognition();
+
+  /* Sync finalised transcript into the text input */
+  useEffect(() => {
+    if (transcript) {
+      setInputValue(transcript);
+      resetTranscript();
+    }
+  }, [transcript, resetTranscript]);
+
+  const handleMicClick = () => {
+    isListening ? stopListening() : startListening();
+  };
 
   // Load initial welcome script
   useEffect(() => {
@@ -218,9 +242,31 @@ export default function Chat() {
               value={inputValue}
               onChange={(e: ChangeEvent<HTMLInputElement>) => setInputValue(e.target.value)}
               placeholder="Describe your symptoms or ask a health inquiry..."
-              className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-4 pr-14 py-3.5 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all shadow-inner placeholder-slate-400"
+              className={`w-full bg-slate-50 border border-slate-200 rounded-2xl pl-4 py-3.5 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all shadow-inner placeholder-slate-400 ${isMicSupported ? 'pr-24' : 'pr-14'}`}
               disabled={isTyping}
             />
+
+            {/* Microphone button — only rendered when the browser supports the API */}
+            {isMicSupported && (
+              <div className="absolute right-12 flex items-center">
+                <MicButton
+                  onClick={handleMicClick}
+                  isListening={isListening}
+                  disabled={isTyping}
+                />
+              </div>
+            )}
+
+            {/* Unsupported browser notice — shown inline as a tooltip-style hint */}
+            {!isMicSupported && (
+              <span
+                title="Your browser does not support voice input. Please use Chrome or Edge."
+                className="absolute right-14 text-[10px] text-slate-400 hidden sm:block select-none"
+              >
+                🎤 N/A
+              </span>
+            )}
+
             <button
               type="submit"
               disabled={!inputValue.trim() || isTyping}
