@@ -1,7 +1,9 @@
+// useSpeechRecognition.ts
 import { useState, useEffect, useRef, useCallback } from "react";
 
 /* ─── Type augmentation for browser Speech Recognition API ─── */
 interface SpeechRecognitionEvent extends Event {
+  readonly resultIndex: number;
   readonly results: SpeechRecognitionResultList;
 }
 
@@ -30,7 +32,6 @@ declare global {
   }
 }
 
-/* ─── Hook return type ─── */
 export interface UseSpeechRecognitionReturn {
   transcript: string;
   isListening: boolean;
@@ -42,10 +43,8 @@ export interface UseSpeechRecognitionReturn {
 
 /**
  * useSpeechRecognition
- *
- * Wraps the browser Web Speech API (SpeechRecognition / webkitSpeechRecognition).
- * Language is set to "hi-IN" so that Google's cloud recognizer automatically
- * handles mixed Hindi + English (Hinglish) speech without extra configuration.
+ * Wraps the browser Web Speech API. Enabled with interim processing to 
+ * catch quick utterances dynamically.
  */
 export function useSpeechRecognition(): UseSpeechRecognitionReturn {
   const [transcript, setTranscript] = useState<string>("");
@@ -53,7 +52,6 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
 
   const recognitionRef = useRef<ISpeechRecognition | null>(null);
 
-  /* ── Detect API support once on mount ── */
   const SpeechRecognitionAPI =
     typeof window !== "undefined"
       ? window.SpeechRecognition ?? window.webkitSpeechRecognition ?? null
@@ -61,20 +59,14 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
 
   const isSupported = SpeechRecognitionAPI !== null;
 
-  /* ── Build and configure the recognition instance ── */
   useEffect(() => {
     if (!isSupported || !SpeechRecognitionAPI) return;
 
     const recognition = new SpeechRecognitionAPI();
 
-    /*
-     * "hi-IN" instructs Google Speech to use the Hindi (India) acoustic model.
-     * Because Google's recognizer is bilingual-aware for hi-IN, it transparently
-     * handles Hinglish (mixed Hindi + English) utterances without any extra flags.
-     */
     recognition.lang = "hi-IN";
-    recognition.continuous = false;      // single-utterance mode
-    recognition.interimResults = false;  // only fire on final result
+    recognition.continuous = false;      
+    recognition.interimResults = true;  // Enabled to capture words instantly
     recognition.maxAlternatives = 1;
 
     recognition.onstart = () => {
@@ -82,12 +74,11 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
     };
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
-      const finalTranscript = Array.from(event.results)
-        .map((result) => result[0].transcript)
-        .join(" ")
-        .trim();
-
-      setTranscript(finalTranscript);
+      let currentResult = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        currentResult += event.results[i][0].transcript;
+      }
+      setTranscript(currentResult);
     };
 
     recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
@@ -101,15 +92,12 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
 
     recognitionRef.current = recognition;
 
-    /* Cleanup: abort if the component unmounts while listening */
     return () => {
       recognitionRef.current?.abort();
       recognitionRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSupported]);
+  }, [isSupported, SpeechRecognitionAPI]);
 
-  /* ── Public controls ── */
   const startListening = useCallback(() => {
     if (!recognitionRef.current || isListening) return;
     setTranscript("");

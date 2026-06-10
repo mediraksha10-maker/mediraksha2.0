@@ -1,7 +1,8 @@
+// pages/Chat.tsx
 import React, { useState, useEffect, useRef, type ChangeEvent } from "react";
 import { Bot, ArrowLeft, Send, Sparkles, User, RefreshCw } from "lucide-react";
 import { useNavigate } from "react-router";
-import api from '../api/Api'; // Importing your configured Axios instance
+import api from '../api/Api'; 
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
 import MicButton from '../components/MicButton';
 
@@ -31,6 +32,7 @@ export default function Chat() {
   const [isTyping, setIsTyping] = useState<boolean>(false);
 
   const chatEndRef = useRef<HTMLDivElement | null>(null);
+  const welcomeTimeoutRef = useRef<number[]>([]); // 🌟 Tracks welcome timers to prevent memory leaks
   const navigate = useNavigate();
 
   /* ── Speech recognition ── */
@@ -43,21 +45,31 @@ export default function Chat() {
     resetTranscript,
   } = useSpeechRecognition();
 
-  /* Sync finalised transcript into the text input */
+  /* Syncs live voice inputs directly into the chat text input box */
   useEffect(() => {
     if (transcript) {
       setInputValue(transcript);
-      resetTranscript();
     }
-  }, [transcript, resetTranscript]);
+  }, [transcript]);
 
   const handleMicClick = () => {
-    isListening ? stopListening() : startListening();
+    if (isListening) {
+      stopListening();
+    } else {
+      setInputValue(""); 
+      resetTranscript();
+      startListening();
+    }
   };
 
-  // Load initial welcome script
+  // Load initial welcome script safely with unmount tracking
   useEffect(() => {
     initiateWelcomeChat();
+    
+    return () => {
+      // 🌟 Clears active timers if the component unmounts or restarts in Strict Mode
+      welcomeTimeoutRef.current.forEach(clearTimeout);
+    };
   }, []);
 
   // Smooth scroll tracking container rule
@@ -66,21 +78,25 @@ export default function Chat() {
   }, [messages, isTyping]);
 
   const initiateWelcomeChat = () => {
+    // 🌟 Cancel any pending welcome execution jobs running in the background background
+    welcomeTimeoutRef.current.forEach(clearTimeout);
+    welcomeTimeoutRef.current = [];
+
     setMessages([]);
     setIsTyping(true);
     
-    setTimeout(() => {
+    const timer1 = window.setTimeout(() => {
       const msg1: Message = {
-        id: "welcome-1",
+        id: `welcome-1-${Date.now()}`, // 🌟 Dynamically stamped unique keys
         sender: "bot",
         text: INITIAL_BOT_MESSAGES[0].text,
         timestamp: new Date()
       };
       setMessages([msg1]);
       
-      setTimeout(() => {
+      const timer2 = window.setTimeout(() => {
         const msg2: Message = {
-          id: "welcome-2",
+          id: `welcome-2-${Date.now()}`, // 🌟 Dynamically stamped unique keys
           sender: "bot",
           text: INITIAL_BOT_MESSAGES[1].text,
           timestamp: new Date()
@@ -88,7 +104,11 @@ export default function Chat() {
         setMessages(prev => [...prev, msg2]);
         setIsTyping(false);
       }, 1000);
+
+      welcomeTimeoutRef.current.push(timer2);
     }, 500);
+
+    welcomeTimeoutRef.current.push(timer1);
   };
 
   const handleSendMessage = async (e: React.FormEvent): Promise<void> => {
@@ -106,14 +126,13 @@ export default function Chat() {
 
     setMessages((prev) => [...prev, userMessage]);
     setInputValue("");
+    resetTranscript(); // 🌟 Clear out audio tracking hook cache safely on form submission
     setIsTyping(true);
 
     try {
       // 2. Perform POST request to your backend API route
-      // Request Body Schema matches: { "message": "your type" }
       const response = await api.post("/chat", { message: cleanInput });
       
-      // Response Parsing Schema matches: { "response": "by ai" }
       const aiResponseText = response.data?.response || "I could not process that request. Please try rephrasing your symptoms.";
 
       const botMessage: Message = {
@@ -246,7 +265,7 @@ export default function Chat() {
               disabled={isTyping}
             />
 
-            {/* Microphone button — only rendered when the browser supports the API */}
+            {/* Microphone button */}
             {isMicSupported && (
               <div className="absolute right-12 flex items-center">
                 <MicButton
@@ -257,7 +276,7 @@ export default function Chat() {
               </div>
             )}
 
-            {/* Unsupported browser notice — shown inline as a tooltip-style hint */}
+            {/* Unsupported browser notice */}
             {!isMicSupported && (
               <span
                 title="Your browser does not support voice input. Please use Chrome or Edge."
