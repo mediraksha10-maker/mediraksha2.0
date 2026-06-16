@@ -10,6 +10,15 @@ const ALLOWED_MIME_TYPES = new Set([
 
 const ALLOWED_CATEGORIES = new Set(['lab', 'prescription', 'scan', 'other']);
 const ALLOWED_VISIBILITIES = new Set(['private', 'doctor']);
+
+const PREFIX_MAP = { prescription: 'PRES', lab: 'LAB', scan: 'IMG', discharge: 'DIS', other: 'REC' };
+
+const generateRecordId = async (category) => {
+  const result = await pool.query(`SELECT COUNT(*) as cnt FROM "Report" WHERE "category" = $1`, [category]);
+  const nextNum = parseInt(result.rows[0].cnt) + 1;
+  const prefix = PREFIX_MAP[category] || 'REC';
+  return `${prefix}-${String(nextNum).padStart(5, '0')}`;
+};
 const REPORT_METADATA_COLUMNS = `
   "id", "userId", "uploadedBy", "doctorId", "title", "category",
   "fileSize", "mimeType", "visibility", "originalFileName",
@@ -60,11 +69,13 @@ export const uploadReport = async (req, res) => {
     // Convert the binary RAM buffer into a text-safe value for storage in PostgreSQL.
     const fileData = req.file.buffer.toString('base64');
 
+    const recordId = await generateRecordId(category);
+
     // 2. Insert into the database
     const query = `
       INSERT INTO "Report"
-      ("userId", "uploadedBy", "doctorId", "title", "category", "fileSize", "fileData", "mimeType", "visibility", "originalFileName", "created_at", "updated_at")
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+      ("userId", "uploadedBy", "doctorId", "recordId", "title", "category", "fileSize", "fileData", "mimeType", "visibility", "originalFileName", "created_at", "updated_at")
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
       RETURNING ${REPORT_METADATA_COLUMNS};
     `;
 
@@ -72,6 +83,7 @@ export const uploadReport = async (req, res) => {
       userId,
       uploadedBy || 'user',
       doctorId || null,
+      recordId,
       title.trim(),
       category,
       fileSize,
