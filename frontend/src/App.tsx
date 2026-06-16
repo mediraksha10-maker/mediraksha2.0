@@ -15,6 +15,8 @@ import DoctorAuth from "./pages/DoctorAuth"
 
 import UserPage from "./user/UserPage"
 import Upload from "./service/Upload"
+import Records from "./service/Records"
+import RecordDetail from "./service/RecordDetail"
 import Map from "./service/Map"
 import Hospital from "./service/Hospital"
 // import Health from "./service/Health" removing
@@ -22,6 +24,7 @@ import Disease from "./service/Disease"
 import Chat from "./service/Chat"
 import Appointment from "./service/Appointment"
 import AddDoctor from "./service/AddDoctor"
+import EmergencyFlow from "./pages/EmergencyFlow"
 
 function App() {
   const [isLoading, setIsLoading] = useState(true);
@@ -63,9 +66,14 @@ function App() {
 
           {/* Login require */}
           <Route path="/upload" element={<Upload />} />
+          <Route path="/records" element={<Records />} />
+          <Route path="/records/:id" element={<RecordDetail />} />
           <Route path="/appointment" element={<Appointment />} />
           <Route path="/doctoravailability" element={<Navigate to="/appointment" replace />} />
           <Route path="/adddoctor" element={<AddDoctor />} />
+
+          {/* Emergency Response (full-screen, no nav) */}
+          <Route path="/emergency" element={<EmergencyFlow />} />
 
         </Routes>
       </div>

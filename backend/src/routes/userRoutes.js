@@ -2,12 +2,29 @@ import express from 'express';
 import multer from 'multer';
 
 // Controllers
-import { 
-  uploadReport, 
-  getAllReports, 
-  getReportById, 
-  deleteReport 
+import {
+  uploadReport,
+  getAllReports,
+  getReportById,
+  deleteReport
 } from '../controllers/uploadController.js';
+
+import {
+  getAllRecords, getRecordById, createRecord, updateRecord, deleteRecord,
+  toggleArchive, toggleImportant, togglePin, duplicateRecord,
+  getActivity, searchRecords,
+  getConnections, addConnection, removeConnection,
+  getPatientSummary, upsertPatientSummary,
+} from '../controllers/recordsController.js';
+
+import {
+  getUserTags, createTag, deleteTag, addTagToRecord, removeTagFromRecord,
+} from '../controllers/tagsController.js';
+
+import {
+  getCollections, createCollection, updateCollection, deleteCollection,
+  getCollectionDetail, addRecordToCollection, removeRecordFromCollection, getRecordCollections,
+} from '../controllers/collectionsController.js';
 
 import {
   getUserDetails,
@@ -73,13 +90,53 @@ const uploadReportFile = (req, res, next) => {
 // All routes here are automatically prefixed with /api/user and protected by authVerify
 
 /* ==========================================
-   FILES UPLOAD AND MANAGE ROUTES
+   LEGACY REPORT ROUTES (kept for compatibility)
    ========================================== */
-// The upload.single('file') expects the FormData key on the frontend to be named 'file'
 router.post('/report/upload', uploadReportFile, uploadReport);
 router.get('/report/all', getAllReports);
 router.get('/report/:id', getReportById);
 router.delete('/report/:id', deleteReport);
+
+/* ==========================================
+   MEDICAL RECORDS MODULE ROUTES
+   ========================================== */
+router.get('/records/all', getAllRecords);
+router.get('/records/search', searchRecords);
+router.get('/records/summary', getPatientSummary);
+router.post('/records/summary', upsertPatientSummary);
+router.post('/records/create', uploadReportFile, createRecord);
+router.get('/records/:id', getRecordById);
+router.patch('/records/:id', updateRecord);
+router.delete('/records/:id', deleteRecord);
+router.patch('/records/:id/archive', toggleArchive);
+router.patch('/records/:id/important', toggleImportant);
+router.patch('/records/:id/pin', togglePin);
+router.post('/records/:id/duplicate', duplicateRecord);
+router.get('/records/:id/activity', getActivity);
+router.get('/records/:id/connections', getConnections);
+router.post('/records/:id/connect/:targetId', addConnection);
+router.delete('/records/:id/connect/:targetId', removeConnection);
+router.post('/records/:id/tags/:tagId', addTagToRecord);
+router.delete('/records/:id/tags/:tagId', removeTagFromRecord);
+router.get('/records/:id/collections', getRecordCollections);
+
+/* ==========================================
+   TAGS ROUTES
+   ========================================== */
+router.get('/tags', getUserTags);
+router.post('/tags', createTag);
+router.delete('/tags/:tagId', deleteTag);
+
+/* ==========================================
+   COLLECTIONS ROUTES
+   ========================================== */
+router.get('/collections', getCollections);
+router.post('/collections', createCollection);
+router.patch('/collections/:id', updateCollection);
+router.delete('/collections/:id', deleteCollection);
+router.get('/collections/:id', getCollectionDetail);
+router.post('/collections/:id/records/:recordId', addRecordToCollection);
+router.delete('/collections/:id/records/:recordId', removeRecordFromCollection);
 
 /* ==========================================
    USER PROFILE OPERATION ROUTES

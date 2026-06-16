@@ -50,6 +50,14 @@ export const signup = async (req, res) => {
 
     const user = newUser.rows[0];
 
+    // Assign permanent MediRaksha ID (MRK-XXXXXX) and QR payload
+    const mrkId     = `MRK-${String(user.id).padStart(6, '0')}`;
+    const qrPayload = JSON.stringify({ patient_id: mrkId, v: 1 });
+    await pool.query(
+      `UPDATE "User" SET mediraksha_id = $1, mrk_qr_payload = $2 WHERE id = $3`,
+      [mrkId, qrPayload, user.id]
+    );
+
     // Generate token
     const token = generateToken(user.id);
 
