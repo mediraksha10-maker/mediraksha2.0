@@ -1,0 +1,43 @@
+version: '3.8'
+
+networks:
+  mediraksha-network:
+
+services:
+  database:
+    image: postgres:16
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USERNAME: postgres
+      POSTGRES_PASSWORD: <password>
+      POSTGRES_DB: appdb
+    volumes:
+      - medi_data:/etc/postgres/data
+
+  backend:
+    image: ghcr.io/mediraksha10-maker/mediraksha-backend:latest
+    ports:
+      - "8000:8000"
+    # Variables should have appropriate values.
+    environment:
+      PORT: 8000
+      JWT_SECRET: 
+      DB_URL: 
+      GROQ_API_KEY: 
+      FRONTEND_URL: 
+      GEOAPIFY_API_KEY:
+
+
+
+  frontend:
+    image: ghcr.io/mediraksha10-maker/mediraksha-frontend:latest
+    ports:
+      - "8080:80"
+    # Add Backend url
+    environment:
+      VITE_API_BASE_URL:
+    
+volumes:
+  medi_data:
+  
