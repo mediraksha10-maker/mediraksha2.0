@@ -15,12 +15,9 @@ import hospitalRoutes from './routes/hospitalRoutes.js';
 import diseaseRoutes from './routes/diseaseRoutes.js';
 import authVerify from './middlewares/authVerify.js';
 
-
-
 dotenv.config();
 const app = express();
 const __dirname = path.resolve();
-
 
 // Middleware
 app.use(express.json());
@@ -31,21 +28,22 @@ app.use(cors({
   credentials: true,
 }));
 
+app.use(express.static(path.join(__dirname, '../frontend/dist')));
 
-// Define routes
+// Define API routes
 app.get('/api', (req, res) => {
   res.status(200).send('Mediraksha API is running');
 });
 app.use('/api/auth', authRoutes);
-app.use('/api/user',authVerify, userRoutes);
+app.use('/api/user', authVerify, userRoutes);
 app.use('/api/doctor', authVerify, doctorRoutes);
 app.use('/api/chat', aiRoutes);
 app.use('/api/hospital', hospitalRoutes);
 app.use('/api/disease', diseaseRoutes);
-app.use('/', (req, res) => {
-  res.status(200).sendFile(path.join(__dirname, '../../frontend/dist', 'index.html'));
-});
 
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../frontend/dist', 'index.html'));
+});
 
 // Start the server after connecting to the database
 connectDB().then(() => {
