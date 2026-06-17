@@ -26,6 +26,3 @@ dist-ssr
 venv
 
 Other
-
-Dockerfile
-*.yaml
