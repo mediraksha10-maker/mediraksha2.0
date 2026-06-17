@@ -42,6 +42,7 @@ export default function DoctorPage() {
   }, [navigate]);
 
   const handleLogout = async (): Promise<void> => {
+    localStorage.removeItem("token");
     try {
       await api.post("/auth/logout");
     } catch (_) {

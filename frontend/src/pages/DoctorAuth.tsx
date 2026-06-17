@@ -66,7 +66,8 @@ const DoctorAuth = () => {
         email: loginEmail,
         password: loginPassword,
       });
-      if (response.status === 200) {
+      if (response.status === 200 && response.data?.token) {
+        localStorage.setItem("token", response.data.token);
         toast.success("Login successful!");
         navigate("/doctor");
       } else {

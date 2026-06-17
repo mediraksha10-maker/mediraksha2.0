@@ -146,8 +146,9 @@ export default function DoctorProfile() {
 
   // --- Handle Logout (Using HTTP-only cookie backend process) ---
   const handleLogout = async (): Promise<void> => {
+    localStorage.removeItem("token");
     try {
-      await api.post("/auth/logout"); 
+      await api.post("/auth/logout");
     } catch (_) {
       // Proceed to redirect anyway
     } finally {

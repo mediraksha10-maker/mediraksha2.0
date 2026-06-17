@@ -139,12 +139,11 @@ export default function MyDetail() {
     setEditing(false);
   };
 
-  // FIX 4: Auth uses HTTP-only cookies (set by the server), not localStorage.
-  // localStorage.removeItem("token") did nothing. Call a backend logout endpoint
-  // so the server can clear the cookie, then redirect.
+  // Auth token is stored locally and sent on every request via Authorization header.
   const handleLogout = async (): Promise<void> => {
+    localStorage.removeItem("token");
     try {
-      await api.post("/auth/logout"); // server clears the HTTP-only cookie
+      await api.post("/auth/logout");
     } catch (_) {
       // Even if the call fails, proceed to redirect
     } finally {

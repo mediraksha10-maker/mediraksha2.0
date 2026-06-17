@@ -55,7 +55,8 @@ const Auth = () => {
     setLoading(true);
     try {
       const response = await api.post('/auth/login', { email, password });
-      if (response.status === 200) {
+      if (response.status === 200 && response.data?.token) {
+        localStorage.setItem("token", response.data.token);
         toast.success("Login successful!");
         navigate("/");
       } else {
