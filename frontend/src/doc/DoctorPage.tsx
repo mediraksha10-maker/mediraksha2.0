@@ -214,9 +214,12 @@ function DoctorSlots() {
   const [slotDurationMinutes, setSlotDurationMinutes] = useState<number>(60);
   const [weeklyRules, setWeeklyRules] = useState<WeeklyRule[]>(DEFAULT_WEEKLY_RULES);
   const [statusFilter, setStatusFilter] = useState<string>("");
+  const [fromDate, setFromDate] = useState<string>("");
+  const [toDate, setToDate] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
   const [publishing, setPublishing] = useState<boolean>(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [bulkDeleting, setBulkDeleting] = useState<boolean>(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const today = new Date().toISOString().split("T")[0];
@@ -231,6 +234,8 @@ function DoctorSlots() {
       setLoading(true);
       const params: Record<string, string> = {};
       if (statusFilter) params.status = statusFilter;
+      if (fromDate) params.fromDate = fromDate;
+      if (toDate) params.toDate = toDate;
 
       const response = await api.get("/doctor/slot/all", { params });
       if (response.data?.success) {
@@ -245,7 +250,7 @@ function DoctorSlots() {
 
   useEffect(() => {
     fetchSlots();
-  }, [statusFilter]);
+  }, [statusFilter, fromDate, toDate]);
 
   const updateRule = (dayOfWeek: number, changes: Partial<WeeklyRule>) => {
     setWeeklyRules((prev) => prev.map((rule) => (
@@ -308,6 +313,33 @@ function DoctorSlots() {
       showMessage("error", error.response?.data?.message || "Failed to delete slot.");
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const handleDeleteSlotsByRange = async () => {
+    if (!fromDate || !toDate) {
+      showMessage("error", "Select both From and To dates to delete a range.");
+      return;
+    }
+
+    if (toDate < fromDate) {
+      showMessage("error", "End date must be the same as or later than start date.");
+      return;
+    }
+
+    if (!window.confirm(`Delete all unbooked slots from ${fromDate} to ${toDate}?`)) return;
+
+    setBulkDeleting(true);
+    try {
+      const response = await api.delete("/doctor/slot", { params: { fromDate, toDate } });
+      if (response.data?.success) {
+        showMessage("success", response.data.message || "Slots deleted successfully.");
+        fetchSlots();
+      }
+    } catch (error: any) {
+      showMessage("error", error.response?.data?.message || "Failed to delete slots by range.");
+    } finally {
+      setBulkDeleting(false);
     }
   };
 
@@ -433,7 +465,7 @@ function DoctorSlots() {
               <h2 className="font-black text-slate-800 text-sm">Published Slots</h2>
               <p className="text-xs text-slate-400 mt-0.5">{slots.length} slot{slots.length === 1 ? "" : "s"} visible</p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <select
                 value={statusFilter}
                 onChange={(event) => setStatusFilter(event.target.value)}
@@ -444,6 +476,24 @@ function DoctorSlots() {
                 <option value="booked">Booked</option>
                 <option value="blocked">Blocked</option>
               </select>
+              <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+                <label className="text-[11px] font-bold text-slate-500">From</label>
+                <input
+                  type="date"
+                  value={fromDate}
+                  onChange={(event) => setFromDate(event.target.value)}
+                  className="bg-transparent text-xs text-slate-700 focus:outline-none"
+                />
+              </div>
+              <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+                <label className="text-[11px] font-bold text-slate-500">To</label>
+                <input
+                  type="date"
+                  value={toDate}
+                  onChange={(event) => setToDate(event.target.value)}
+                  className="bg-transparent text-xs text-slate-700 focus:outline-none"
+                />
+              </div>
               <button
                 onClick={fetchSlots}
                 className="p-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-slate-600"
@@ -465,30 +515,59 @@ function DoctorSlots() {
               <p className="text-xs text-slate-400 mt-1">Choose a date and publish your first availability.</p>
             </div>
           ) : (
-            <div className="divide-y divide-slate-100">
-              {slots.map((slot) => (
-                <div key={slot.id} className="p-4 flex items-center justify-between gap-3 hover:bg-slate-50 transition-colors">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-black text-slate-800 text-sm">
-                        {new Date(slot.bookingDate).toLocaleDateString(undefined, { dateStyle: "medium" })}
-                      </p>
-                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 bg-slate-100 rounded-md px-2 py-1">
-                        <Clock size={12} /> {slot.slotTime?.slice(0, 5) || "09:00"}
-                      </span>
-                      <span className={statusStyle(slot.status)}>{slot.status}</span>
-                    </div>
-                    <p className="text-[11px] text-slate-400 mt-1">Slot ID #{slot.id}</p>
-                  </div>
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 bg-slate-50 border-b border-slate-100">
+                <div className="text-xs text-slate-500">
+                  {fromDate && toDate
+                    ? `Showing slots from ${new Date(fromDate).toLocaleDateString(undefined, { dateStyle: 'medium' })} to ${new Date(toDate).toLocaleDateString(undefined, { dateStyle: 'medium' })}`
+                    : 'Showing all published slots'}
+                </div>
+                <button
+                  onClick={handleDeleteSlotsByRange}
+                  disabled={!fromDate || !toDate || toDate < fromDate || bulkDeleting}
+                  className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed"
+                >
+                  <Trash2 size={14} />
+                  {bulkDeleting ? 'Deleting range...' : 'Delete Range'}
+                </button>
+              </div>
 
-                  <button
-                    onClick={() => handleDeleteSlot(slot)}
-                    disabled={slot.status === "booked" || deletingId === slot.id}
-                    className="p-2 text-rose-600 hover:bg-rose-50 disabled:text-slate-300 disabled:hover:bg-transparent rounded-xl transition-colors cursor-pointer disabled:cursor-not-allowed"
-                    title={slot.status === "booked" ? "Booked slots cannot be deleted" : "Delete slot"}
-                  >
-                    <Trash2 size={16} />
-                  </button>
+              {Object.entries(slots.reduce((groups: Record<string, DoctorSlot[]>, slot) => {
+                groups[slot.bookingDate] = groups[slot.bookingDate] || [];
+                groups[slot.bookingDate].push(slot);
+                return groups;
+              }, {} as Record<string, DoctorSlot[]>)).sort((a, b) => a[0].localeCompare(b[0])).map(([date, daySlots]) => (
+                <div key={date} className="rounded-3xl border border-slate-100 overflow-hidden bg-white shadow-sm">
+                  <div className="bg-slate-50 px-5 py-3 border-b border-slate-100">
+                    <p className="text-sm font-black text-slate-800">
+                      {new Date(date).toLocaleDateString(undefined, { dateStyle: 'medium' })}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-0.5">{daySlots.length} slot{daySlots.length === 1 ? '' : 's'}</p>
+                  </div>
+                  <div className="divide-y divide-slate-100">
+                    {daySlots.map((slot) => (
+                      <div key={slot.id} className="p-4 flex items-center justify-between gap-3 hover:bg-slate-50 transition-colors">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 bg-slate-100 rounded-md px-2 py-1">
+                              <Clock size={12} /> {slot.slotTime?.slice(0, 5) || '09:00'}
+                            </span>
+                            <span className={statusStyle(slot.status)}>{slot.status}</span>
+                          </div>
+                          <p className="text-[11px] text-slate-400 mt-1">Slot ID #{slot.id}</p>
+                        </div>
+
+                        <button
+                          onClick={() => handleDeleteSlot(slot)}
+                          disabled={slot.status === "booked" || deletingId === slot.id}
+                          className="p-2 text-rose-600 hover:bg-rose-50 disabled:text-slate-300 disabled:hover:bg-transparent rounded-xl transition-colors cursor-pointer disabled:cursor-not-allowed"
+                          title={slot.status === "booked" ? "Booked slots cannot be deleted" : "Delete slot"}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>

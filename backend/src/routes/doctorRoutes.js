@@ -27,7 +27,8 @@ import {
 import {
   getAllSlots,
   addSlot,
-  deleteSlot
+  deleteSlot,
+  deleteSlotsByRange
 } from '../controllers/doctorSlotController.js';
 
 import { getUserReport } from '../controllers/doctorReportController.js';
@@ -43,6 +44,7 @@ router.delete('/info/delete', deleteDoctorAccount);
 // Resolves to: /doctor/slot/all, /doctor/slot/:id, etc.
 router.get('/slot/all', getAllSlots);
 router.post('/slot/publish', addSlot);
+router.delete('/slot', deleteSlotsByRange);
 router.delete('/slot/:id', deleteSlot);
 
 
