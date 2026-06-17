@@ -25,7 +25,7 @@ services:
       JWT_SECRET: 
       DB_URL: 
       GROQ_API_KEY: 
-      FRONTEND_URL: 
+      FRONTEND_URL: http://localhost:5173
       GEOAPIFY_API_KEY:
 
 
@@ -36,7 +36,7 @@ services:
       - "8080:80"
     # Add Backend url
     environment:
-      VITE_API_BASE_URL:
+      VITE_API_BASE_URL: http://localhost:8000
     
 volumes:
   medi_data:

@@ -3,7 +3,7 @@ import dotenv from 'dotenv';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import path from 'path';
-
+import seed from './seed.js'
 import { pool, connectDB } from './config/db.js';
 
 // routes
@@ -47,6 +47,7 @@ app.get('*', (req, res) => {
 
 // Start the server after connecting to the database
 connectDB().then(() => {
+  seed();
   const PORT = process.env.PORT || 3000;
   app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}/api`);
