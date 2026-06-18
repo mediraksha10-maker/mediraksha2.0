@@ -17,6 +17,7 @@ import emergencyRoutes from './routes/emergencyRoutes.js';
 import hospitalIntelligenceRoutes from './routes/hospitalIntelligenceRoutes.js';
 import ambulanceRoutes            from './routes/ambulanceRoutes.js';
 import patientRoutes              from './routes/patientRoutes.js';
+import reviewRoutes               from './routes/reviewRoutes.js';
 import authVerify from './middlewares/authVerify.js';
 
 
@@ -50,6 +51,7 @@ app.use('/api/emergency', emergencyRoutes);
 app.use('/api/hospitals',   hospitalIntelligenceRoutes);
 app.use('/api/ambulances',  ambulanceRoutes);
 app.use('/api/patient',     patientRoutes);
+app.use('/api/reviews',     reviewRoutes);
 app.use('/', (req, res) => {
   res.status(200).sendFile(path.join(__dirname, '../../frontend/dist', 'index.html'));
 });
