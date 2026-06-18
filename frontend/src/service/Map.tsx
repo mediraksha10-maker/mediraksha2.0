@@ -454,70 +454,222 @@ function HospitalDetail({ h, onBack }: { h: HospitalFull; onBack: () => void }) 
   const [reviews, setReviews] = useState<LocalReview[]>([]);
   const refreshReviews = () => setReviews(getLocalReviews("hospital", h.id));
   useEffect(() => { refreshReviews(); }, [h.id]);
-  const tabs = ["overview","departments","services","insurance","doctors","reviews","contact"];
   const openDir = () => window.open(`https://www.google.com/maps/search/${encodeURIComponent(h.name + " " + h.address)}`, "_blank");
 
+  const tabs = [
+    { key: "overview",    label: "Overview"    },
+    { key: "departments", label: "Departments" },
+    { key: "services",    label: "Services"    },
+    { key: "insurance",   label: "Insurance"   },
+    { key: "doctors",     label: "Doctors"     },
+    { key: "reviews",     label: "Reviews"     },
+    { key: "contact",     label: "Contact"     },
+  ];
+
+  /* dept icon colours cycling */
+  const deptColors = [
+    { bg: "from-indigo-500 to-indigo-700",   ring: "ring-indigo-200"  },
+    { bg: "from-violet-500 to-violet-700",   ring: "ring-violet-200"  },
+    { bg: "from-blue-500 to-blue-700",       ring: "ring-blue-200"    },
+    { bg: "from-emerald-500 to-emerald-700", ring: "ring-emerald-200" },
+    { bg: "from-rose-500 to-rose-700",       ring: "ring-rose-200"    },
+    { bg: "from-amber-500 to-amber-700",     ring: "ring-amber-200"   },
+  ];
+
   if (selectedDocFromDept) return <DoctorProfile d={selectedDocFromDept} onBack={() => setSelectedDocFromDept(null)} />;
+
   return (
-    <div className="min-h-screen bg-slate-50 font-sans">
-      <div className="relative h-56 md:h-72 overflow-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-slate-100 via-blue-50 to-indigo-100 font-sans pb-8">
+
+      {/* ── Rich Hero ── */}
+      <div className="relative h-64 md:h-80 overflow-hidden">
         <img src={h.image} alt={h.name} className="w-full h-full object-cover" />
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 to-transparent" />
-        <button onClick={onBack} className="absolute top-4 left-4 w-9 h-9 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-white hover:bg-white/40 transition-all"><ArrowLeft size={18} /></button>
-        <div className="absolute bottom-4 left-4 right-4">
-          <div className="flex flex-wrap gap-1.5 mb-2">
-            {h.emergency && <Chip label="Emergency" color="rose" />}
-            {h.is24x7 && <Chip label="24/7" color="emerald" />}
-            {h.diagnosticsAvailable && <Chip label="Diagnostics" color="indigo" />}
-          </div>
-          <h1 className="text-2xl font-black text-white leading-tight">{h.name}</h1>
-          <p className="text-slate-300 text-sm mt-0.5 flex items-center gap-1"><MapPin size={12} />{h.address}</p>
+        {/* Multi-layer gradient overlay */}
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-900/40 to-slate-900/20" />
+        <div className="absolute inset-0 bg-gradient-to-r from-indigo-950/30 to-transparent" />
+
+        {/* Decorative light orbs */}
+        <div className="absolute top-8 right-12 w-32 h-32 rounded-full bg-indigo-500/10 blur-2xl pointer-events-none" />
+        <div className="absolute bottom-16 right-6 w-20 h-20 rounded-full bg-violet-500/15 blur-xl pointer-events-none" />
+
+        {/* Back button — glassmorphism */}
+        <button
+          onClick={onBack}
+          className="absolute top-4 left-4 flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white/15 hover:bg-white/25 backdrop-blur-sm text-white border border-white/20 transition-all shadow-lg text-sm font-bold"
+        >
+          <ArrowLeft size={16} /> Back
+        </button>
+
+        {/* Status badges top-right */}
+        <div className="absolute top-4 right-4 flex flex-col gap-1.5 items-end">
+          {h.emergency && (
+            <span className="flex items-center gap-1 bg-rose-600/90 backdrop-blur-sm text-white text-[10px] font-black uppercase tracking-wider px-2.5 py-1.5 rounded-xl shadow-lg">
+              ⚡ Emergency
+            </span>
+          )}
+          {h.is24x7 && (
+            <span className="bg-emerald-600/90 backdrop-blur-sm text-white text-[10px] font-black uppercase tracking-wider px-2.5 py-1.5 rounded-xl shadow-lg">
+              24 / 7
+            </span>
+          )}
         </div>
-      </div>
-      <div className="bg-white border-b border-slate-100 px-6 py-4 flex items-center gap-6 overflow-x-auto">
-        <div className="text-center shrink-0"><p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Rating</p><div className="flex justify-center mt-1.5"><Stars r={h.rating} /></div></div>
-        <div className="w-px h-8 bg-slate-100 shrink-0" />
-        <div className="text-center shrink-0"><p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Beds</p><p className="text-lg font-black text-indigo-600 flex items-center gap-1"><BedDouble size={16} />{h.beds}</p></div>
-        <div className="w-px h-8 bg-slate-100 shrink-0" />
-        <div className="text-center shrink-0"><p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Est.</p><p className="text-lg font-black text-slate-700">{h.established}</p></div>
-        <div className="w-px h-8 bg-slate-100 shrink-0" />
-        <div className="text-center shrink-0"><p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Distance</p><p className="text-lg font-black text-emerald-600">{h.distance.toFixed(1)} km</p></div>
-      </div>
-      <div className="bg-white border-b border-slate-100 px-4 flex gap-1 overflow-x-auto">
-        {tabs.map(t => <button key={t} onClick={() => setTab(t)} className={`px-4 py-3 text-xs font-black uppercase tracking-wider shrink-0 border-b-2 transition-all ${tab === t ? "border-indigo-600 text-indigo-600" : "border-transparent text-slate-400 hover:text-slate-700"}`}>{t}</button>)}
-      </div>
-      <div className="max-w-4xl mx-auto p-4 md:p-8 space-y-6">
-        {tab === "overview" && (
-          <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm">
-            <h2 className="text-lg font-black text-slate-800 mb-3 flex items-center gap-2"><Building2 size={18} className="text-indigo-600" />About {h.name}</h2>
-            <p className="text-slate-600 text-sm leading-relaxed mb-4">{h.description}</p>
-            <div className="grid grid-cols-2 gap-3">
-              {[["Type", h.type], ["Departments", String(h.specializations.length)], ["Insurance Plans", `${h.insurance.length}+`], ["Doctors", `${doctors.length}+`]].map(([k,v]) => (
-                <div key={k} className="bg-slate-50 rounded-xl p-3"><p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">{k}</p><p className="text-sm font-bold text-slate-700 capitalize">{v}</p></div>
-              ))}
+
+        {/* Bottom overlay — name, address, rating */}
+        <div className="absolute bottom-0 left-0 right-0 px-5 pb-5 pt-8">
+          <div className="flex items-end justify-between gap-3">
+            <div className="flex-1 min-w-0">
+              {h.type && (
+                <span className="inline-block text-[10px] font-black uppercase tracking-widest text-indigo-200 bg-indigo-900/50 border border-indigo-500/30 px-2.5 py-1 rounded-lg mb-2 backdrop-blur-sm">
+                  {h.type}
+                </span>
+              )}
+              <h1 className="text-2xl md:text-3xl font-black text-white leading-tight drop-shadow">{h.name}</h1>
+              <p className="text-slate-300 text-sm mt-1 flex items-center gap-1.5 font-medium">
+                <MapPin size={13} className="text-slate-400 shrink-0" />{h.address}
+              </p>
+            </div>
+            <div className="shrink-0 flex flex-col items-center gap-1 bg-black/40 backdrop-blur-sm border border-white/10 rounded-2xl px-3 py-2.5">
+              <div className="flex gap-0.5">
+                {[1,2,3,4,5].map(i => (
+                  <Star key={i} size={11} className={i <= Math.round(h.rating) ? "fill-amber-400 text-amber-400" : "fill-white/20 text-white/20"} />
+                ))}
+              </div>
+              <span className="text-amber-300 font-black text-base leading-none">{h.rating.toFixed(1)}</span>
+              <span className="text-white/50 text-[9px] font-bold">Rating</span>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* ── Stats strip ── */}
+      <div className="max-w-4xl mx-auto px-4 -mt-5 relative z-10 mb-3">
+        <div className="bg-white rounded-2xl shadow-xl shadow-indigo-200/30 border border-slate-100 overflow-hidden">
+          <div className="grid grid-cols-4 divide-x divide-slate-100">
+            {[
+              { icon: <BedDouble size={16} className="text-indigo-500" />,   label: "Beds",      value: String(h.beds),              color: "text-indigo-700", bg: "bg-indigo-50"   },
+              { icon: <Activity size={16} className="text-violet-500" />,    label: "Depts",     value: String(h.specializations.length), color: "text-violet-700", bg: "bg-violet-50" },
+              { icon: <Users size={16} className="text-emerald-500" />,      label: "Doctors",   value: `${doctors.length}+`,         color: "text-emerald-700",bg: "bg-emerald-50"  },
+              { icon: <Navigation size={16} className="text-blue-500" />,    label: "Distance",  value: `${h.distance.toFixed(1)} km`,color: "text-blue-700",   bg: "bg-blue-50"     },
+            ].map(({ icon, label, value, color, bg }) => (
+              <div key={label} className="py-4 flex flex-col items-center gap-1.5">
+                <div className={`w-8 h-8 rounded-xl ${bg} flex items-center justify-center`}>{icon}</div>
+                <p className={`text-base font-black ${color} leading-none`}>{value}</p>
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Tab navigation ── */}
+      <div className="bg-white border-b border-slate-100 shadow-sm sticky top-0 z-20">
+        <div className="max-w-4xl mx-auto px-3 flex gap-0.5 overflow-x-auto hide-scrollbar py-2">
+          {tabs.map(t => (
+            <button
+              key={t.key}
+              onClick={() => { setTab(t.key); setSelectedSpec(null); }}
+              className={`px-4 py-2 text-[11px] font-black uppercase tracking-wider shrink-0 rounded-xl transition-all ${
+                tab === t.key
+                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-400/30"
+                  : "text-slate-400 hover:text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Tab content ── */}
+      <div className="max-w-4xl mx-auto px-4 py-5 space-y-4">
+
+        {/* ── OVERVIEW ── */}
+        {tab === "overview" && (
+          <>
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+              <div className="bg-gradient-to-r from-indigo-600 to-violet-600 px-6 py-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
+                    <Building2 size={17} className="text-white" />
+                  </div>
+                  <div>
+                    <h2 className="font-black text-white text-base">About {h.name.split(" ").slice(0, 3).join(" ")}</h2>
+                    <p className="text-indigo-200 text-[11px] font-medium">Est. {h.established}</p>
+                  </div>
+                </div>
+              </div>
+              <div className="p-5">
+                <p className="text-slate-600 text-sm leading-relaxed">{h.description}</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { label: "Type",            value: h.type,                        icon: <Building2 size={15} />,  bg: "bg-indigo-50",  iconC: "text-indigo-500",  textC: "text-indigo-700"  },
+                { label: "Departments",     value: String(h.specializations.length), icon: <Activity size={15} />,  bg: "bg-violet-50",  iconC: "text-violet-500",  textC: "text-violet-700"  },
+                { label: "Insurance Plans", value: `${h.insurance.length}+`,      icon: <ShieldCheck size={15} />,bg: "bg-emerald-50", iconC: "text-emerald-500", textC: "text-emerald-700" },
+                { label: "Doctors",         value: `${doctors.length}+`,          icon: <Users size={15} />,      bg: "bg-blue-50",    iconC: "text-blue-500",    textC: "text-blue-700"    },
+              ].map(({ label, value, icon, bg, iconC, textC }) => (
+                <div key={label} className={`${bg} rounded-2xl p-4 flex flex-col gap-2 border border-white`}>
+                  <div className={`w-8 h-8 rounded-xl bg-white flex items-center justify-center ${iconC} shadow-sm`}>{icon}</div>
+                  <p className={`text-lg font-black ${textC} leading-none capitalize`}>{value}</p>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Quick specializations preview */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+              <h3 className="font-black text-slate-800 text-sm flex items-center gap-2 mb-3">
+                <div className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center"><Stethoscope size={13} className="text-indigo-600" /></div>
+                Specializations
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {h.specializations.map((s, i) => {
+                  const cols = ["bg-indigo-50 text-indigo-700 border-indigo-100","bg-violet-50 text-violet-700 border-violet-100","bg-blue-50 text-blue-700 border-blue-100","bg-emerald-50 text-emerald-700 border-emerald-100","bg-amber-50 text-amber-700 border-amber-100","bg-rose-50 text-rose-600 border-rose-100"];
+                  return <span key={s} className={`text-[11px] font-bold border px-3 py-1.5 rounded-xl ${cols[i % cols.length]}`}>{s}</span>;
+                })}
+              </div>
+            </div>
+          </>
         )}
+
+        {/* ── DEPARTMENTS ── */}
         {tab === "departments" && (
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
             {!selectedSpec ? (
               <>
-                <div className="p-6 pb-4 border-b border-slate-50">
-                  <h2 className="text-lg font-black text-slate-800 flex items-center gap-2"><Activity size={18} className="text-indigo-600" />Specialised Departments</h2>
-                  <p className="text-xs text-slate-400 mt-1 font-medium">Tap a specialty to see doctors in that department</p>
+                <div className="bg-gradient-to-r from-violet-600 to-indigo-600 px-6 py-4">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
+                      <Activity size={17} className="text-white" />
+                    </div>
+                    <div>
+                      <h2 className="font-black text-white text-base">Specialised Departments</h2>
+                      <p className="text-violet-200 text-[11px] font-medium">Tap a department to see its doctors</p>
+                    </div>
+                  </div>
                 </div>
-                <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {h.specializations.map(s => {
+                <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {h.specializations.map((s, i) => {
                     const docCount = doctors.filter(d => d.specialization === s).length;
+                    const c = deptColors[i % deptColors.length];
                     return (
-                      <button key={s} onClick={() => setSelectedSpec(s)}
-                        className="group flex items-center gap-3 p-3.5 bg-indigo-50 hover:bg-indigo-100 rounded-xl border border-indigo-100 hover:border-indigo-300 transition-all text-left">
-                        <div className="w-9 h-9 rounded-lg bg-indigo-600 group-hover:bg-indigo-700 flex items-center justify-center text-white shrink-0 transition-colors"><Stethoscope size={15} /></div>
-                        <div className="flex-1 min-w-0">
-                          <span className="font-bold text-indigo-800 text-sm block">{s}</span>
-                          {docCount > 0 && <span className="text-[10px] text-indigo-500 font-semibold">{docCount} doctor{docCount !== 1 ? "s" : ""}</span>}
+                      <button
+                        key={s}
+                        onClick={() => setSelectedSpec(s)}
+                        className="group flex items-center gap-3.5 p-4 bg-slate-50 hover:bg-indigo-50 rounded-2xl border border-slate-100 hover:border-indigo-200 transition-all text-left shadow-xs hover:shadow-md"
+                      >
+                        <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${c.bg} flex items-center justify-center shrink-0 shadow-md ring-2 ${c.ring}`}>
+                          <Stethoscope size={17} className="text-white" />
                         </div>
-                        <ChevronRight size={14} className="text-indigo-400 group-hover:text-indigo-600 shrink-0 transition-colors" />
+                        <div className="flex-1 min-w-0">
+                          <span className="font-bold text-slate-800 text-sm block group-hover:text-indigo-700 transition-colors">{s}</span>
+                          <span className="text-[11px] text-slate-400 font-medium">
+                            {docCount > 0 ? `${docCount} doctor${docCount !== 1 ? "s" : ""}` : "No doctors on record"}
+                          </span>
+                        </div>
+                        <ChevronRight size={15} className="text-slate-300 group-hover:text-indigo-500 shrink-0 transition-all group-hover:translate-x-0.5" />
                       </button>
                     );
                   })}
@@ -525,38 +677,55 @@ function HospitalDetail({ h, onBack }: { h: HospitalFull; onBack: () => void }) 
               </>
             ) : (
               <>
-                <div className="p-5 border-b border-slate-100 flex items-center gap-3">
-                  <button onClick={() => setSelectedSpec(null)} className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 transition-all shrink-0"><ArrowLeft size={15} /></button>
+                <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-3 bg-indigo-50/60">
+                  <button
+                    onClick={() => setSelectedSpec(null)}
+                    className="w-9 h-9 rounded-xl bg-white shadow-sm border border-slate-200 hover:bg-indigo-50 flex items-center justify-center text-slate-600 transition-all shrink-0"
+                  >
+                    <ArrowLeft size={15} />
+                  </button>
                   <div>
-                    <h2 className="font-black text-slate-800 text-sm flex items-center gap-1.5"><Stethoscope size={14} className="text-indigo-600" />{selectedSpec}</h2>
-                    <p className="text-[11px] text-slate-400 font-medium">{doctors.filter(d => d.specialization === selectedSpec).length} doctors at {h.name.split(" ").slice(0,2).join(" ")}</p>
+                    <h2 className="font-black text-slate-800 text-sm flex items-center gap-1.5">
+                      <Stethoscope size={14} className="text-indigo-600" />{selectedSpec}
+                    </h2>
+                    <p className="text-[11px] text-slate-400 font-medium">
+                      {doctors.filter(d => d.specialization === selectedSpec).length} doctor(s) · {h.name.split(" ").slice(0, 2).join(" ")}
+                    </p>
                   </div>
                 </div>
                 <div className="divide-y divide-slate-50">
                   {doctors.filter(d => d.specialization === selectedSpec).length === 0 ? (
-                    <div className="p-8 text-center text-slate-400">
-                      <Users size={32} className="mx-auto mb-2 opacity-30" />
-                      <p className="text-sm font-semibold">No doctor records for this specialty</p>
+                    <div className="p-10 text-center">
+                      <div className="w-14 h-14 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center mx-auto mb-3">
+                        <Users size={24} className="text-slate-300" />
+                      </div>
+                      <p className="text-sm font-bold text-slate-500">No doctor records for this specialty</p>
                     </div>
                   ) : (
                     doctors.filter(d => d.specialization === selectedSpec).map(d => (
-                      <button key={d.id} onClick={() => setSelectedDocFromDept(d)}
-                        className="w-full flex items-center gap-4 p-4 hover:bg-indigo-50/60 transition-colors text-left group">
-                        <img src={d.photo} alt={d.name} className="w-12 h-12 rounded-full object-cover border-2 border-indigo-100 shrink-0"
-                          onError={e => { (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(d.name)}&background=6366f1&color=fff&size=48`; }} />
+                      <button
+                        key={d.id}
+                        onClick={() => setSelectedDocFromDept(d)}
+                        className="w-full flex items-center gap-4 p-4 hover:bg-indigo-50/50 transition-colors text-left group"
+                      >
+                        <div className="relative shrink-0">
+                          <img
+                            src={d.photo} alt={d.name}
+                            className="w-13 h-13 w-[52px] h-[52px] rounded-2xl object-cover border-2 border-indigo-100 shadow-sm"
+                            onError={e => { (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(d.name)}&background=6366f1&color=fff&size=52`; }}
+                          />
+                          <span className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-white ${d.available ? "bg-emerald-500" : "bg-slate-300"}`} />
+                        </div>
                         <div className="flex-1 min-w-0">
                           <p className="font-bold text-slate-800 text-sm group-hover:text-indigo-700 transition-colors">{d.name}</p>
                           <p className="text-xs text-indigo-600 font-semibold">{d.specialization}</p>
-                          <p className="text-[11px] text-slate-400">{d.qualification} · {d.experience} yrs exp</p>
+                          <p className="text-[11px] text-slate-400 mt-0.5">{d.qualification} · {d.experience} yrs exp</p>
                         </div>
-                        <div className="text-right shrink-0 space-y-1">
+                        <div className="text-right shrink-0 space-y-1.5">
                           <Stars r={d.rating} />
-                          <p className="text-xs font-bold text-emerald-600">₹{d.consultationFee}</p>
-                          <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full block ${d.available ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-400"}`}>
-                            {d.available ? "Available" : "Busy"}
-                          </span>
+                          <p className="text-sm font-black text-emerald-600">₹{d.consultationFee}</p>
                         </div>
-                        <ChevronRight size={14} className="text-slate-300 group-hover:text-indigo-400 shrink-0 transition-colors" />
+                        <ChevronRight size={14} className="text-slate-300 group-hover:text-indigo-500 shrink-0 transition-all" />
                       </button>
                     ))
                   )}
@@ -565,114 +734,313 @@ function HospitalDetail({ h, onBack }: { h: HospitalFull; onBack: () => void }) 
             )}
           </div>
         )}
+
+        {/* ── SERVICES ── */}
         {tab === "services" && (
-          <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm">
-            <h2 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2"><ShieldCheck size={18} className="text-indigo-600" />Facilities & Services</h2>
-            {[
-              { label:"24/7 Emergency", ok:h.emergency, desc:"Round-the-clock emergency trauma care" },
-              { label:"Open 24 Hours",  ok:h.is24x7,   desc:"OPD and services available anytime" },
-              { label:"Diagnostics",    ok:h.diagnosticsAvailable, desc:"MRI, CT, X-Ray, blood tests on-site" },
-              { label:"In-house Pharmacy", ok:h.pharmacyAvailable, desc:"Medicines dispensed within the hospital" },
-              { label:"ICU & Critical Care", ok:h.beds > 200, desc:"Dedicated intensive care unit" },
-              { label:"Blood Bank",     ok:h.beds > 100, desc:"24/7 blood bank facility" },
-            ].map(({ label, ok, desc }) => (
-              <div key={label} className={`flex items-center gap-4 p-3 rounded-xl border mb-2 ${ok ? "bg-emerald-50 border-emerald-100" : "bg-slate-50 border-slate-100"}`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${ok ? "bg-emerald-500 text-white" : "bg-slate-200 text-slate-400"}`}><CheckCircle size={16} /></div>
-                <div><p className={`text-sm font-bold ${ok ? "text-emerald-800" : "text-slate-400"}`}>{label}</p><p className={`text-[11px] ${ok ? "text-emerald-600" : "text-slate-400"}`}>{desc}</p></div>
-                <span className={`ml-auto text-[10px] font-black uppercase ${ok ? "text-emerald-600" : "text-slate-400"}`}>{ok ? "Available" : "N/A"}</span>
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+            <div className="bg-gradient-to-r from-emerald-600 to-teal-600 px-6 py-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
+                  <ShieldCheck size={17} className="text-white" />
+                </div>
+                <div>
+                  <h2 className="font-black text-white text-base">Facilities & Services</h2>
+                  <p className="text-emerald-100 text-[11px] font-medium">Available amenities at this hospital</p>
+                </div>
               </div>
-            ))}
-          </div>
-        )}
-        {tab === "insurance" && (
-          <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm">
-            <h2 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2"><ShieldCheck size={18} className="text-indigo-600" />Accepted Insurance</h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {h.insurance.map(ins => (
-                <div key={ins} className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border border-slate-100">
-                  <Heart size={14} className="text-rose-400 shrink-0" /><span className="text-sm font-bold text-slate-700">{ins}</span>
+            </div>
+            <div className="p-5 space-y-2.5">
+              {[
+                { label: "24/7 Emergency",     ok: h.emergency,              desc: "Round-the-clock emergency trauma care",    icon: "⚡" },
+                { label: "Open 24 Hours",      ok: h.is24x7,                 desc: "OPD and all services available anytime",   icon: "🕐" },
+                { label: "Diagnostics",        ok: h.diagnosticsAvailable,   desc: "MRI, CT, X-Ray, blood tests on-site",      icon: "🔬" },
+                { label: "In-house Pharmacy",  ok: h.pharmacyAvailable,      desc: "Medicines dispensed within the hospital",  icon: "💊" },
+                { label: "ICU & Critical Care",ok: h.beds > 200,             desc: "Dedicated intensive care unit",            icon: "🏥" },
+                { label: "Blood Bank",         ok: h.beds > 100,             desc: "24/7 blood bank facility",                 icon: "🩸" },
+              ].map(({ label, ok, desc, icon }) => (
+                <div
+                  key={label}
+                  className={`flex items-center gap-4 p-4 rounded-2xl border transition-all ${
+                    ok ? "bg-emerald-50 border-emerald-100" : "bg-slate-50 border-slate-100"
+                  }`}
+                >
+                  <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 text-lg shadow-sm ${ok ? "bg-emerald-100" : "bg-slate-100"}`}>
+                    {icon}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-bold ${ok ? "text-emerald-900" : "text-slate-400"}`}>{label}</p>
+                    <p className={`text-[11px] mt-0.5 ${ok ? "text-emerald-600" : "text-slate-400"}`}>{desc}</p>
+                  </div>
+                  <div className={`shrink-0 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider ${ok ? "bg-emerald-600 text-white shadow-sm" : "bg-slate-200 text-slate-400"}`}>
+                    {ok ? "Active" : "N/A"}
+                  </div>
                 </div>
               ))}
             </div>
           </div>
         )}
+
+        {/* ── INSURANCE ── */}
+        {tab === "insurance" && (
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+            <div className="bg-gradient-to-r from-rose-500 to-pink-600 px-6 py-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
+                  <Heart size={17} className="text-white" />
+                </div>
+                <div>
+                  <h2 className="font-black text-white text-base">Accepted Insurance</h2>
+                  <p className="text-rose-100 text-[11px] font-medium">{h.insurance.length} plans accepted</p>
+                </div>
+              </div>
+            </div>
+            <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {h.insurance.map((ins, i) => {
+                const insColors = ["bg-rose-50 border-rose-100 text-rose-700","bg-indigo-50 border-indigo-100 text-indigo-700","bg-violet-50 border-violet-100 text-violet-700","bg-amber-50 border-amber-100 text-amber-700","bg-blue-50 border-blue-100 text-blue-700","bg-emerald-50 border-emerald-100 text-emerald-700"];
+                const c = insColors[i % insColors.length];
+                return (
+                  <div key={ins} className={`flex items-center gap-3 p-4 rounded-2xl border ${c}`}>
+                    <div className="w-9 h-9 rounded-xl bg-white shadow-sm flex items-center justify-center shrink-0">
+                      <ShieldCheck size={15} className="text-rose-500" />
+                    </div>
+                    <span className="text-sm font-bold truncate">{ins}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ── DOCTORS ── */}
         {tab === "doctors" && (
           <div className="space-y-3">
-            <h2 className="text-lg font-black text-slate-800 flex items-center gap-2"><Users size={18} className="text-indigo-600" />Doctors at {h.name.split(" ").slice(0,2).join(" ")}</h2>
-            {doctors.length === 0 ? <p className="text-slate-400 text-sm">No doctor records available yet.</p> : doctors.map(d => (
-              <div key={d.id} className="bg-white rounded-2xl border border-slate-100 p-4 flex items-center gap-4 shadow-sm">
-                <img src={d.photo} alt={d.name} className="w-12 h-12 rounded-full object-cover border-2 border-indigo-100 shrink-0" onError={e => { (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(d.name)}&background=6366f1&color=fff&size=48`; }} />
-                <div className="flex-1 min-w-0">
-                  <p className="font-bold text-slate-800 text-sm">{d.name}</p>
-                  <p className="text-xs text-indigo-600 font-semibold">{d.specialization}</p>
-                  <p className="text-[11px] text-slate-400">{d.qualification} · {d.experience} yrs exp</p>
-                </div>
-                <div className="text-right shrink-0"><Stars r={d.rating} /><p className="text-xs font-bold text-emerald-600 mt-1">₹{d.consultationFee}</p></div>
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl px-5 py-4 flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
+                <Users size={17} className="text-white" />
               </div>
-            ))}
-          </div>
-        )}
-        {tab === "contact" && (
-          <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm space-y-4">
-            <h2 className="text-lg font-black text-slate-800 flex items-center gap-2"><Phone size={18} className="text-indigo-600" />Contact & Directions</h2>
-            <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-xl">
-              <Phone size={18} className="text-indigo-600 shrink-0" />
-              <div><p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Phone</p><p className="text-sm font-bold text-slate-700">{h.phone}</p></div>
-              <a href={`tel:${h.phone}`} className="ml-auto bg-indigo-600 text-white text-xs font-bold px-4 py-2 rounded-xl">Call</a>
+              <div>
+                <h2 className="font-black text-white text-base">Our Doctors</h2>
+                <p className="text-blue-100 text-[11px] font-medium">{doctors.length} specialist{doctors.length !== 1 ? "s" : ""} at {h.name.split(" ").slice(0, 2).join(" ")}</p>
+              </div>
             </div>
-            <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-xl">
-              <MapPin size={18} className="text-indigo-600 shrink-0" />
-              <div><p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Address</p><p className="text-sm font-bold text-slate-700">{h.address}</p></div>
-            </div>
-            <button onClick={openDir} className="flex items-center justify-center gap-2 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition-all"><Navigation size={16} />Open in Google Maps</button>
-          </div>
-        )}
-        {tab === "reviews" && (
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-            {showReview && <ReviewModal entityType="hospital" entityId={h.id} entityName={h.name} onClose={() => setShowReview(false)} onDone={refreshReviews} />}
-            <div className="px-5 py-4 border-b border-slate-50 flex items-center justify-between">
-              <h3 className="font-black text-slate-800 text-lg flex items-center gap-2">
-                <Star size={18} className="fill-amber-400 text-amber-400" />
-                Patient Reviews {reviews.length > 0 && <span className="text-slate-400 font-bold text-sm">({reviews.length})</span>}
-              </h3>
-              <button onClick={() => setShowReview(true)}
-                className="flex items-center gap-1.5 text-xs font-black text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 px-3 py-1.5 rounded-xl transition-all">
-                <Star size={11} />Write Review
-              </button>
-            </div>
-            {reviews.length === 0 ? (
-              <div className="px-5 py-12 text-center text-slate-400">
-                <Star size={32} className="mx-auto mb-2 opacity-20" />
-                <p className="text-sm font-semibold">No reviews yet</p>
-                <p className="text-xs mt-0.5">Be the first to review {h.name}</p>
-                <button onClick={() => setShowReview(true)}
-                  className="mt-4 flex items-center gap-1.5 text-xs font-black text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 px-4 py-2 rounded-xl transition-all mx-auto">
-                  <Star size={12} />Write a Review
-                </button>
+
+            {doctors.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm px-5 py-14 text-center">
+                <div className="w-14 h-14 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center mx-auto mb-3">
+                  <Users size={24} className="text-slate-300" />
+                </div>
+                <p className="font-bold text-slate-500">No doctor records available yet</p>
               </div>
             ) : (
-              <div className="divide-y divide-slate-50">
-                {reviews.map(rv => (
-                  <div key={rv.id} className="px-5 py-4">
-                    <div className="flex items-start justify-between gap-3 mb-1.5">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-black text-xs shrink-0">
-                          {rv.author.charAt(0).toUpperCase()}
-                        </div>
-                        <span className="font-bold text-slate-700 text-sm">{rv.author}</span>
+              doctors.map(d => (
+                <div key={d.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden hover:shadow-md transition-all">
+                  <div className="flex items-center gap-4 p-4">
+                    <div className="relative shrink-0">
+                      <div className="w-[60px] h-[60px] rounded-2xl overflow-hidden border-2 border-indigo-100 shadow-md">
+                        <img
+                          src={d.photo} alt={d.name}
+                          className="w-full h-full object-cover"
+                          onError={e => { (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(d.name)}&background=6366f1&color=fff&size=60`; }}
+                        />
                       </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <Stars r={rv.rating} />
-                        <span className="text-[10px] text-slate-400">{rv.date}</span>
+                      <span className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-white ${d.available ? "bg-emerald-500 animate-pulse" : "bg-slate-300"}`} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-black text-slate-800 text-sm">{d.name}</p>
+                      <p className="text-xs text-indigo-600 font-bold">{d.specialization}</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">{d.qualification} · {d.experience} yrs exp</p>
+                    </div>
+                    <div className="text-right shrink-0 space-y-1">
+                      <Stars r={d.rating} />
+                      <p className="text-sm font-black text-emerald-600">₹{d.consultationFee}</p>
+                      <span className={`text-[9px] font-black px-2 py-0.5 rounded-full block ${d.available ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-400"}`}>
+                        {d.available ? "Available" : "Busy"}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="px-4 pb-4 grid grid-cols-2 gap-2">
+                    <a
+                      href={`tel:${d.phone}`}
+                      className="flex items-center justify-center gap-1.5 text-[11px] font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 py-2 rounded-xl transition-all"
+                    >
+                      <Phone size={12} /> Call
+                    </a>
+                    <div className="flex items-center justify-center gap-1.5 text-[11px] font-bold text-white bg-gradient-to-r from-indigo-600 to-violet-600 py-2 rounded-xl shadow-sm">
+                      <Stethoscope size={12} /> Consult
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {/* ── REVIEWS ── */}
+        {tab === "reviews" && (
+          <>
+            {showReview && (
+              <ReviewModal entityType="hospital" entityId={h.id} entityName={h.name} onClose={() => setShowReview(false)} onDone={refreshReviews} />
+            )}
+
+            {reviews.length > 0 && (
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+                <h3 className="font-black text-slate-800 flex items-center gap-2 mb-4">
+                  <div className="w-8 h-8 rounded-xl bg-amber-50 flex items-center justify-center"><Star size={15} className="fill-amber-400 text-amber-400" /></div>
+                  Rating Overview
+                </h3>
+                <div className="flex items-center gap-5">
+                  <div className="text-center shrink-0">
+                    <p className="text-5xl font-black text-slate-800 leading-none">
+                      {(reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1)}
+                    </p>
+                    <div className="flex justify-center gap-0.5 mt-2">
+                      {[1,2,3,4,5].map(i => (
+                        <Star key={i} size={13} className={i <= Math.round(reviews.reduce((s, r) => s + r.rating, 0) / reviews.length) ? "fill-amber-400 text-amber-400" : "fill-slate-200 text-slate-200"} />
+                      ))}
+                    </div>
+                    <p className="text-[11px] text-slate-400 font-bold mt-1.5">{reviews.length} review{reviews.length !== 1 ? "s" : ""}</p>
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    {[5,4,3,2,1].map(star => {
+                      const count = reviews.filter(r => Math.round(r.rating) === star).length;
+                      const max = Math.max(...[5,4,3,2,1].map(s => reviews.filter(r => Math.round(r.rating) === s).length), 1);
+                      return (
+                        <div key={star} className="flex items-center gap-2">
+                          <span className="text-[10px] font-black text-slate-500 w-3 text-right shrink-0">{star}</span>
+                          <Star size={9} className="fill-amber-400 text-amber-400 shrink-0" />
+                          <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                            <div className="h-full bg-gradient-to-r from-amber-400 to-amber-300 rounded-full transition-all duration-500" style={{ width: `${(count / max) * 100}%` }} />
+                          </div>
+                          <span className="text-[10px] font-bold text-slate-400 w-4 text-right shrink-0">{count}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <button
+              onClick={() => setShowReview(true)}
+              className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl border-2 border-dashed border-indigo-200 hover:border-indigo-400 text-indigo-600 font-black text-sm hover:bg-indigo-50 transition-all"
+            >
+              <Star size={15} className="text-indigo-400" />
+              Write a Review for {h.name.split(" ").slice(0, 2).join(" ")}
+            </button>
+
+            {reviews.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm px-5 py-12 text-center">
+                <div className="w-14 h-14 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center mx-auto mb-3">
+                  <Star size={24} className="text-slate-300" />
+                </div>
+                <p className="font-bold text-slate-500">No reviews yet</p>
+                <p className="text-sm text-slate-400 mt-0.5">Be the first to review {h.name}</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {reviews.map(rv => (
+                  <div key={rv.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+                    <div className="flex items-start gap-3.5">
+                      <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-indigo-400 to-violet-600 flex items-center justify-center text-white font-black text-base shrink-0 shadow-md">
+                        {rv.author.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="font-black text-slate-800 text-sm">{rv.author}</p>
+                            <div className="flex items-center gap-1 mt-1">
+                              {[1,2,3,4,5].map(i => (
+                                <Star key={i} size={11} className={i <= rv.rating ? "fill-amber-400 text-amber-400" : "fill-slate-200 text-slate-200"} />
+                              ))}
+                              <span className="text-[10px] font-black text-amber-600 ml-0.5">{rv.rating}.0</span>
+                            </div>
+                          </div>
+                          <span className="text-[10px] text-slate-400 font-medium shrink-0 mt-0.5">{rv.date}</span>
+                        </div>
+                        {rv.text && (
+                          <p className="text-sm text-slate-500 leading-relaxed mt-2 pt-2 border-t border-slate-50">{rv.text}</p>
+                        )}
                       </div>
                     </div>
-                    {rv.text && <p className="text-sm text-slate-500 leading-relaxed pl-10">{rv.text}</p>}
                   </div>
                 ))}
               </div>
             )}
+          </>
+        )}
+
+        {/* ── CONTACT ── */}
+        {tab === "contact" && (
+          <div className="space-y-3">
+            <div className="bg-gradient-to-r from-slate-800 to-slate-900 rounded-2xl px-5 py-4 flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-white/15 flex items-center justify-center">
+                <Phone size={17} className="text-white" />
+              </div>
+              <div>
+                <h2 className="font-black text-white text-base">Contact & Directions</h2>
+                <p className="text-slate-400 text-[11px] font-medium">Reach us or get directions</p>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+              <div className="flex items-center gap-4 p-5 border-b border-slate-50">
+                <div className="w-11 h-11 rounded-xl bg-indigo-50 flex items-center justify-center shrink-0">
+                  <Phone size={17} className="text-indigo-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Phone</p>
+                  <p className="text-sm font-bold text-slate-700">{h.phone}</p>
+                </div>
+                <a
+                  href={`tel:${h.phone}`}
+                  className="flex items-center gap-1.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-md transition-all"
+                >
+                  <Phone size={12} /> Call Now
+                </a>
+              </div>
+
+              <div className="flex items-start gap-4 p-5">
+                <div className="w-11 h-11 rounded-xl bg-rose-50 flex items-center justify-center shrink-0 mt-0.5">
+                  <MapPin size={17} className="text-rose-500" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Address</p>
+                  <p className="text-sm font-bold text-slate-700 leading-snug">{h.address}</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5 font-medium">Est. {h.established} · {h.type}</p>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={openDir}
+              className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white font-bold py-4 rounded-2xl transition-all shadow-lg shadow-indigo-400/30 text-sm"
+            >
+              <Navigation size={16} /> Open in Google Maps
+            </button>
+
+            {/* Quick stats summary */}
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Quick Summary</p>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { label: "Beds Available",   value: String(h.beds),                     icon: "🛏️" },
+                  { label: "Departments",       value: String(h.specializations.length),   icon: "🏥" },
+                  { label: "Insurance Plans",   value: `${h.insurance.length} accepted`,   icon: "🛡️" },
+                  { label: "Diagnostics",       value: h.diagnosticsAvailable ? "Yes" : "No", icon: "🔬" },
+                ].map(({ label, value, icon }) => (
+                  <div key={label} className="flex items-center gap-2.5 bg-slate-50 rounded-xl p-3 border border-slate-100">
+                    <span className="text-lg">{icon}</span>
+                    <div>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">{label}</p>
+                      <p className="text-sm font-bold text-slate-700">{value}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         )}
+
       </div>
     </div>
   );
