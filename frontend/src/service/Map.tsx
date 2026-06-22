@@ -1047,16 +1047,15 @@ function HospitalDetail({ h, onBack }: { h: HospitalFull; onBack: () => void }) 
 }
 
 function DoctorProfile({ d, onBack }: { d: DoctorFull; onBack: () => void }) {
-  const [reviews, setReviews] = useState<LocalReview[]>([]);
+  const [reviews, setReviews]   = useState<LocalReview[]>([]);
   const [showReview, setShowReview] = useState(false);
-  const [tab, setTab] = useState<"about"|"reviews">("about");
+  const [tab, setTab]           = useState<"about" | "reviews">("about");
   const refresh = () => setReviews(getLocalReviews("doctor", d.id));
   useEffect(() => { refresh(); }, [d.id]);
 
   const avgRating = reviews.length
     ? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length
     : d.rating;
-
   const ratingDist = [5, 4, 3, 2, 1].map(star => ({
     star,
     count: reviews.filter(r => Math.round(r.rating) === star).length,
@@ -1065,100 +1064,143 @@ function DoctorProfile({ d, onBack }: { d: DoctorFull; onBack: () => void }) {
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans pb-28">
-      {showReview && <ReviewModal entityType="doctor" entityId={d.id} entityName={d.name} onClose={() => setShowReview(false)} onDone={refresh} />}
+      {showReview && (
+        <ReviewModal
+          entityType="doctor" entityId={d.id} entityName={d.name}
+          onClose={() => setShowReview(false)} onDone={refresh}
+        />
+      )}
 
-      {/* ── Hero ── */}
-      <div className="relative bg-gradient-to-b from-indigo-950 via-indigo-800 to-indigo-600 pb-32 overflow-hidden">
+      {/* ── Short decorative hero banner (nav only, no identity content) ── */}
+      <div className="relative h-44 bg-gradient-to-br from-indigo-900 via-blue-800 to-violet-900 overflow-hidden shrink-0">
         {/* Decorative orbs */}
-        <div className="absolute -left-20 -top-20 w-72 h-72 rounded-full bg-white/5 pointer-events-none" />
-        <div className="absolute right-0 top-16 w-56 h-56 rounded-full bg-violet-500/20 pointer-events-none" />
-        <div className="absolute left-1/4 bottom-0 w-64 h-64 rounded-full bg-indigo-500/15 pointer-events-none" />
-        <div className="absolute right-1/4 -bottom-10 w-40 h-40 rounded-full bg-violet-600/20 pointer-events-none" />
-
-        {/* Top bar */}
-        <div className="flex items-center justify-between px-5 pt-6 pb-8 relative z-10">
-          <button onClick={onBack}
-            className="w-10 h-10 rounded-2xl bg-white/15 backdrop-blur-sm hover:bg-white/25 flex items-center justify-center text-white transition-all border border-white/10 shadow-lg">
-            <ArrowLeft size={18} />
+        <div className="absolute -top-12 -right-12 w-48 h-48 rounded-full bg-blue-400/20 blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-10 -left-10 w-40 h-40 rounded-full bg-violet-500/25 blur-2xl pointer-events-none" />
+        <div className="absolute top-6 left-1/3 w-24 h-24 rounded-full bg-indigo-400/15 blur-xl pointer-events-none" />
+        {/* Dot grid */}
+        <div
+          className="absolute inset-0 pointer-events-none opacity-[0.07]"
+          style={{ backgroundImage: "radial-gradient(circle, rgba(255,255,255,0.9) 1px, transparent 1px)", backgroundSize: "18px 18px" }}
+        />
+        {/* Nav bar */}
+        <div className="relative z-10 flex items-center justify-between px-5 pt-5">
+          <button
+            onClick={onBack}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white/15 hover:bg-white/25 backdrop-blur-sm text-white border border-white/20 text-sm font-bold transition-all shadow-md"
+          >
+            <ArrowLeft size={16} /> Back
           </button>
-          <a href={`tel:${d.phone}`}
-            className="w-10 h-10 rounded-2xl bg-white/15 backdrop-blur-sm hover:bg-white/25 flex items-center justify-center text-white transition-all border border-white/10 shadow-lg">
-            <Phone size={16} />
+          <div className="flex items-center gap-1.5 bg-white/10 border border-white/15 rounded-xl px-3 py-1.5 backdrop-blur-sm">
+            <Stethoscope size={12} className="text-indigo-200" />
+            <span className="text-white/80 text-[11px] font-bold">Doctor Profile</span>
+          </div>
+          <a
+            href={`tel:${d.phone}`}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white/15 hover:bg-white/25 backdrop-blur-sm text-white border border-white/20 text-sm font-bold transition-all shadow-md"
+          >
+            <Phone size={14} /> Call
           </a>
-        </div>
-
-        {/* Centered photo + identity */}
-        <div className="flex flex-col items-center relative z-10 px-5">
-          <div className="relative mb-5">
-            {/* Outer glow ring */}
-            <div className="w-36 h-36 rounded-[28px] bg-white/10 p-1 shadow-2xl ring-4 ring-white/20">
-              <img src={d.photo} alt={d.name}
-                className="w-full h-full rounded-[22px] object-cover"
-                onError={e => { (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(d.name)}&background=6366f1&color=fff&size=144`; }} />
-            </div>
-            <span className={`absolute -bottom-1.5 left-1/2 -translate-x-1/2 whitespace-nowrap flex items-center gap-1 text-[9px] font-black px-3 py-1 rounded-full border-2 border-white/80 shadow-xl ${d.available ? "bg-emerald-400 text-white" : "bg-slate-500 text-white"}`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${d.available ? "bg-white animate-pulse" : "bg-white/50"}`} />
-              {d.available ? "Available Now" : "Currently Busy"}
-            </span>
-          </div>
-
-          <h1 className="text-2xl font-black text-white text-center leading-tight tracking-tight mt-2">{d.name}</h1>
-          <p className="text-indigo-200 text-sm font-semibold mt-1 text-center">{d.qualification}</p>
-
-          {/* Badges row */}
-          <div className="flex items-center gap-2 mt-3 flex-wrap justify-center">
-            <span className="flex items-center gap-1.5 bg-white/15 backdrop-blur-sm border border-white/20 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-sm">
-              <Stethoscope size={11} />{d.specialization}
-            </span>
-            <span className="flex items-center gap-1.5 bg-white/10 border border-white/15 text-white/80 text-xs font-medium px-3 py-1.5 rounded-full">
-              <Building2 size={11} />{d.hospital.split(" ").slice(0, 3).join(" ")}
-            </span>
-          </div>
-
-          {/* Stars */}
-          <div className="flex items-center gap-2.5 mt-4 mb-1">
-            <div className="flex items-center gap-0.5">
-              {[1,2,3,4,5].map(i => (
-                <Star key={i} size={15} className={i <= Math.round(avgRating) ? "fill-amber-400 text-amber-400" : "fill-white/20 text-white/20"} />
-              ))}
-            </div>
-            <span className="text-amber-300 font-black text-sm">{avgRating.toFixed(1)}</span>
-            <span className="text-white/50 text-xs font-medium">
-              {reviews.length > 0 ? `${reviews.length} review${reviews.length > 1 ? "s" : ""}` : "Be first to review"}
-            </span>
-          </div>
         </div>
       </div>
 
-      {/* ── Floating stats card ── */}
-      <div className="max-w-2xl mx-auto px-4 -mt-16 relative z-20 mb-4">
-        <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden">
-          <div className="grid grid-cols-3 divide-x divide-slate-100">
-            {[
-              { icon: <Briefcase size={17} className="text-indigo-500" />, label: "Experience", value: `${d.experience}`, unit: "yrs", color: "text-indigo-700", bg: "bg-indigo-50" },
-              { icon: <Star size={17} className="fill-amber-400 text-amber-400" />,               label: "Rating",      value: avgRating.toFixed(1), unit: "/ 5", color: "text-amber-600", bg: "bg-amber-50" },
-              { icon: <Heart size={17} className="text-emerald-500" />,                           label: "Consult Fee", value: `₹${d.consultationFee}`, unit: "", color: "text-emerald-700", bg: "bg-emerald-50" },
-            ].map(({ icon, label, value, unit, color, bg }) => (
-              <div key={label} className="py-5 px-2 flex flex-col items-center gap-2">
-                <div className={`w-9 h-9 rounded-xl ${bg} flex items-center justify-center shadow-sm`}>{icon}</div>
-                <div className="text-center">
-                  <p className={`text-[22px] font-black ${color} leading-none`}>{value}
-                    <span className="text-[11px] font-bold ml-0.5 opacity-70">{unit}</span>
-                  </p>
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">{label}</p>
+      {/* ── Identity card — overlaps hero at top, white below ── */}
+      <div className="max-w-2xl mx-auto px-4 -mt-12 relative z-20">
+        <div className="bg-white rounded-3xl shadow-2xl shadow-indigo-200/40 border border-slate-100 overflow-hidden">
+
+          {/* Photo + name + meta */}
+          <div className="flex flex-col items-center pt-4 pb-5 px-6">
+            {/* Avatar with gradient ring */}
+            <div className="relative mb-4">
+              <div className="p-[3px] rounded-[22px] bg-gradient-to-br from-blue-400 via-indigo-500 to-violet-500 shadow-2xl shadow-indigo-400/35">
+                <div className="w-24 h-24 rounded-[18px] overflow-hidden bg-white">
+                  <img
+                    src={d.photo} alt={d.name}
+                    className="w-full h-full object-cover"
+                    onError={e => {
+                      (e.target as HTMLImageElement).src =
+                        `https://ui-avatars.com/api/?name=${encodeURIComponent(d.name)}&background=6366f1&color=fff&size=96`;
+                    }}
+                  />
                 </div>
+              </div>
+              {/* Availability dot */}
+              <span className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-[3px] border-white shadow-md ${d.available ? "bg-emerald-500" : "bg-slate-400"}`} />
+            </div>
+
+            {/* Name */}
+            <h1 className="text-[1.45rem] font-black text-slate-800 text-center leading-tight tracking-tight">
+              {d.name}
+            </h1>
+
+            {/* Specialization pill */}
+            <div className="flex items-center gap-1.5 bg-indigo-50 border border-indigo-100 rounded-full px-3.5 py-1.5 mt-2.5">
+              <Stethoscope size={12} className="text-indigo-500" />
+              <span className="text-indigo-700 text-xs font-bold">{d.specialization}</span>
+            </div>
+
+            {/* Qualification */}
+            <p className="text-slate-500 text-sm font-medium mt-2">{d.qualification}</p>
+
+            {/* Hospital */}
+            <p className="text-slate-400 text-xs mt-1 flex items-center gap-1 font-medium">
+              <Building2 size={11} className="text-slate-400" />
+              {d.hospital.split(" ").slice(0, 4).join(" ")}
+            </p>
+
+            {/* Star rating row */}
+            <div className="flex items-center gap-2 mt-3">
+              <div className="flex gap-0.5">
+                {[1, 2, 3, 4, 5].map(i => (
+                  <Star key={i} size={14} className={i <= Math.round(avgRating) ? "fill-amber-400 text-amber-400" : "fill-slate-200 text-slate-200"} />
+                ))}
+              </div>
+              <span className="text-amber-600 font-black text-sm">{avgRating.toFixed(1)}</span>
+              <span className="text-slate-400 text-xs font-medium">
+                {reviews.length > 0 ? `(${reviews.length} review${reviews.length > 1 ? "s" : ""})` : "· Be first to review"}
+              </span>
+            </div>
+
+            {/* Availability badge */}
+            <div className={`mt-3 inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold border ${
+              d.available
+                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                : "bg-slate-100 text-slate-500 border-slate-200"
+            }`}>
+              <span className={`w-2 h-2 rounded-full ${d.available ? "bg-emerald-500 animate-pulse" : "bg-slate-400"}`} />
+              {d.available ? "Available for Consultation" : "Currently Busy"}
+            </div>
+          </div>
+
+          {/* Stats strip */}
+          <div className="grid grid-cols-3 divide-x divide-slate-100 border-t border-slate-100">
+            {[
+              { icon: <Briefcase size={16} className="text-indigo-500" />,              label: "Experience",  value: `${d.experience}`, unit: "yrs",  color: "text-indigo-700", bg: "bg-indigo-50"  },
+              { icon: <Star size={16} className="fill-amber-400 text-amber-400" />,     label: "Rating",      value: avgRating.toFixed(1), unit: "/5", color: "text-amber-600", bg: "bg-amber-50"   },
+              { icon: <Heart size={16} className="text-emerald-500" />,                 label: "Consult Fee", value: `₹${d.consultationFee}`, unit: "",color: "text-emerald-700", bg: "bg-emerald-50"},
+            ].map(({ icon, label, value, unit, color, bg }) => (
+              <div key={label} className="py-4 flex flex-col items-center gap-1.5">
+                <div className={`w-8 h-8 rounded-xl ${bg} flex items-center justify-center shadow-sm`}>{icon}</div>
+                <p className={`text-lg font-black ${color} leading-none`}>
+                  {value}<span className="text-[11px] font-bold opacity-60 ml-0.5">{unit}</span>
+                </p>
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{label}</p>
               </div>
             ))}
           </div>
         </div>
       </div>
 
-      {/* ── Tabs ── */}
-      <div className="max-w-2xl mx-auto px-4 mb-4">
+      {/* ── Tab switcher ── */}
+      <div className="max-w-2xl mx-auto px-4 mt-4 mb-3">
         <div className="bg-white rounded-2xl border border-slate-100 p-1 flex gap-1 shadow-sm">
           {(["about", "reviews"] as const).map(t => (
-            <button key={t} onClick={() => setTab(t)}
-              className={`flex-1 py-2.5 rounded-xl text-sm font-black transition-all ${tab === t ? "bg-indigo-600 text-white shadow-md" : "text-slate-400 hover:text-slate-700"}`}>
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`flex-1 py-2.5 rounded-xl text-sm font-black transition-all ${
+                tab === t ? "bg-indigo-600 text-white shadow-md" : "text-slate-400 hover:text-slate-700"
+              }`}
+            >
               {t === "about" ? "About" : `Reviews${reviews.length > 0 ? ` (${reviews.length})` : ""}`}
             </button>
           ))}
@@ -1166,66 +1208,86 @@ function DoctorProfile({ d, onBack }: { d: DoctorFull; onBack: () => void }) {
       </div>
 
       {/* ── Tab content ── */}
-      <div className="max-w-2xl mx-auto px-4 space-y-4">
+      <div className="max-w-2xl mx-auto px-4 space-y-3">
 
+        {/* ───── ABOUT TAB ───── */}
         {tab === "about" && (
           <>
-            {/* About */}
-            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-              <h3 className="font-black text-slate-800 flex items-center gap-2.5 mb-3">
+            {/* Bio */}
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+              <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-50">
                 <div className="w-8 h-8 rounded-xl bg-indigo-50 flex items-center justify-center shrink-0">
                   <Stethoscope size={15} className="text-indigo-600" />
                 </div>
-                About {d.name.split(" ")[0]}
-              </h3>
-              <p className="text-slate-500 text-sm leading-relaxed">
-                {d.name} is a highly experienced <span className="font-semibold text-slate-700">{d.specialization}</span> specialist
-                with over <span className="font-semibold text-slate-700">{d.experience} years</span> of clinical practice.
-                Holding a <span className="font-semibold text-slate-700">{d.qualification}</span>, they are known for patient-first
-                care and evidence-based treatment. Currently practicing at {d.hospital.split(" ").slice(0, 4).join(" ")}.
+                <h3 className="font-black text-slate-800">About {d.name.split(" ")[0]}</h3>
+              </div>
+              <p className="text-slate-500 text-sm leading-relaxed px-5 py-4">
+                {d.name} is a highly experienced{" "}
+                <span className="font-semibold text-slate-700">{d.specialization}</span> specialist with over{" "}
+                <span className="font-semibold text-slate-700">{d.experience} years</span> of clinical practice.
+                Holding a <span className="font-semibold text-slate-700">{d.qualification}</span>, they are known
+                for patient-first care and evidence-based treatment. Currently practicing at{" "}
+                {d.hospital.split(" ").slice(0, 4).join(" ")}.
               </p>
             </div>
 
-            {/* Info rows */}
+            {/* Professional details */}
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-              <div className="px-5 py-3.5 border-b border-slate-50 flex items-center gap-2.5">
+              <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-50">
                 <div className="w-8 h-8 rounded-xl bg-violet-50 flex items-center justify-center shrink-0">
                   <Award size={15} className="text-violet-600" />
                 </div>
                 <h3 className="font-black text-slate-800">Professional Details</h3>
               </div>
-              {[
-                { icon: <Award size={15} className="text-violet-500" />,    bg: "bg-violet-50",  label: "Qualification",  value: d.qualification, extra: null },
-                { icon: <Building2 size={15} className="text-slate-500" />, bg: "bg-slate-100",  label: "Hospital",       value: d.hospital, extra: null },
-                { icon: <Briefcase size={15} className="text-amber-500" />, bg: "bg-amber-50",   label: "Experience",     value: `${d.experience} years of practice`, extra: null },
-                { icon: <Globe size={15} className="text-emerald-500" />,   bg: "bg-emerald-50", label: "Languages",      value: d.languages.join(", "), extra: null },
-                { icon: <Phone size={15} className="text-indigo-500" />,    bg: "bg-indigo-50",  label: "Contact",        value: d.phone, extra: null },
-                { icon: <Clock size={15} className="text-rose-400" />,      bg: "bg-rose-50",    label: "Availability",   value: d.available ? "Currently Available" : "Currently Busy",
-                  extra: <span className={`text-[10px] font-black px-2.5 py-1 rounded-full ${d.available ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>{d.available ? "● Available" : "● Busy"}</span> },
-              ].map(({ icon, bg, label, value, extra }) => (
-                <div key={label} className="flex items-center gap-4 px-5 py-3.5 border-b border-slate-50 last:border-0 hover:bg-slate-50/60 transition-colors">
-                  <div className={`w-9 h-9 rounded-xl ${bg} flex items-center justify-center shrink-0`}>{icon}</div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">{label}</p>
-                    <p className="text-sm font-bold text-slate-700 truncate">{value}</p>
+              <div className="divide-y divide-slate-50">
+                {[
+                  { icon: <Award size={15} className="text-violet-500" />,    bg: "bg-violet-50",  label: "Qualification",  value: d.qualification,                        extra: null },
+                  { icon: <Building2 size={15} className="text-blue-500" />,  bg: "bg-blue-50",    label: "Hospital",       value: d.hospital,                             extra: null },
+                  { icon: <Briefcase size={15} className="text-amber-500" />, bg: "bg-amber-50",   label: "Experience",     value: `${d.experience} years of practice`,     extra: null },
+                  { icon: <Globe size={15} className="text-emerald-500" />,   bg: "bg-emerald-50", label: "Languages",      value: d.languages.join(", "),                 extra: null },
+                  { icon: <Phone size={15} className="text-indigo-500" />,    bg: "bg-indigo-50",  label: "Contact",        value: d.phone,
+                    extra: (
+                      <a href={`tel:${d.phone}`} className="shrink-0 text-[11px] font-bold text-white bg-indigo-600 hover:bg-indigo-700 px-3 py-1.5 rounded-xl transition-all">
+                        Call
+                      </a>
+                    )
+                  },
+                  { icon: <Clock size={15} className="text-rose-400" />,      bg: "bg-rose-50",    label: "Availability",   value: d.available ? "Available for Consultation" : "Currently Busy",
+                    extra: (
+                      <span className={`shrink-0 text-[10px] font-black px-2.5 py-1 rounded-full border ${
+                        d.available ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-100 text-slate-500 border-slate-200"
+                      }`}>
+                        {d.available ? "● Active" : "● Busy"}
+                      </span>
+                    )
+                  },
+                ].map(({ icon, bg, label, value, extra }) => (
+                  <div key={label} className="flex items-center gap-4 px-5 py-3.5 hover:bg-slate-50/60 transition-colors">
+                    <div className={`w-9 h-9 rounded-xl ${bg} flex items-center justify-center shrink-0`}>{icon}</div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">{label}</p>
+                      <p className="text-sm font-bold text-slate-700 truncate">{value}</p>
+                    </div>
+                    {extra}
                   </div>
-                  {extra}
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
 
             {/* Languages chips */}
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-              <h3 className="font-black text-slate-800 flex items-center gap-2.5 mb-3">
+              <div className="flex items-center gap-3 mb-3">
                 <div className="w-8 h-8 rounded-xl bg-emerald-50 flex items-center justify-center shrink-0">
                   <Globe size={15} className="text-emerald-600" />
                 </div>
-                Languages Spoken
-              </h3>
+                <h3 className="font-black text-slate-800">Languages Spoken</h3>
+              </div>
               <div className="flex flex-wrap gap-2">
                 {d.languages.map(lang => (
-                  <span key={lang}
-                    className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-100 text-emerald-700 text-xs font-bold px-3 py-2 rounded-xl shadow-sm">
+                  <span
+                    key={lang}
+                    className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-100 text-emerald-700 text-xs font-bold px-3 py-2 rounded-xl shadow-sm"
+                  >
                     <Globe size={11} />{lang}
                   </span>
                 ))}
@@ -1234,17 +1296,18 @@ function DoctorProfile({ d, onBack }: { d: DoctorFull; onBack: () => void }) {
           </>
         )}
 
+        {/* ───── REVIEWS TAB ───── */}
         {tab === "reviews" && (
           <>
             {/* Rating overview */}
             {reviews.length > 0 && (
               <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-                <h3 className="font-black text-slate-800 flex items-center gap-2.5 mb-4">
+                <div className="flex items-center gap-3 mb-4">
                   <div className="w-8 h-8 rounded-xl bg-amber-50 flex items-center justify-center shrink-0">
                     <Star size={15} className="fill-amber-400 text-amber-400" />
                   </div>
-                  Rating Overview
-                </h3>
+                  <h3 className="font-black text-slate-800">Rating Overview</h3>
+                </div>
                 <div className="flex items-center gap-6">
                   <div className="text-center shrink-0">
                     <p className="text-5xl font-black text-slate-800 leading-none">{avgRating.toFixed(1)}</p>
@@ -1258,11 +1321,13 @@ function DoctorProfile({ d, onBack }: { d: DoctorFull; onBack: () => void }) {
                   <div className="flex-1 space-y-2">
                     {ratingDist.map(({ star, count }) => (
                       <div key={star} className="flex items-center gap-2">
-                        <span className="text-[10px] font-black text-slate-500 w-3 shrink-0 text-right">{star}</span>
+                        <span className="text-[10px] font-black text-slate-500 w-3 text-right shrink-0">{star}</span>
                         <Star size={9} className="fill-amber-400 text-amber-400 shrink-0" />
                         <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
-                          <div className="h-full bg-gradient-to-r from-amber-400 to-amber-300 rounded-full transition-all duration-500"
-                            style={{ width: `${(count / maxDist) * 100}%` }} />
+                          <div
+                            className="h-full bg-gradient-to-r from-amber-400 to-amber-300 rounded-full transition-all duration-500"
+                            style={{ width: `${(count / maxDist) * 100}%` }}
+                          />
                         </div>
                         <span className="text-[10px] font-bold text-slate-400 w-4 text-right shrink-0">{count}</span>
                       </div>
@@ -1273,8 +1338,10 @@ function DoctorProfile({ d, onBack }: { d: DoctorFull; onBack: () => void }) {
             )}
 
             {/* Write review CTA */}
-            <button onClick={() => setShowReview(true)}
-              className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl border-2 border-dashed border-indigo-200 hover:border-indigo-400 text-indigo-600 font-black text-sm hover:bg-indigo-50 transition-all">
+            <button
+              onClick={() => setShowReview(true)}
+              className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl border-2 border-dashed border-indigo-200 hover:border-indigo-400 text-indigo-600 font-black text-sm hover:bg-indigo-50 transition-all"
+            >
               <Star size={15} className="text-indigo-400" />
               Write a Review for {d.name.split(" ").slice(0, 2).join(" ")}
             </button>
@@ -1323,16 +1390,18 @@ function DoctorProfile({ d, onBack }: { d: DoctorFull; onBack: () => void }) {
       </div>
 
       {/* ── Sticky bottom CTA ── */}
-      <div className="fixed bottom-0 left-0 right-0 z-30 bg-white/96 backdrop-blur-xl border-t border-slate-100 px-4 py-3 shadow-2xl">
+      <div className="fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-xl border-t border-slate-100 px-4 py-3 shadow-2xl">
         <div className="max-w-2xl mx-auto flex items-center gap-4">
           <div className="shrink-0">
             <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Consult Fee</p>
             <p className="text-xl font-black text-indigo-700 leading-tight">₹{d.consultationFee}</p>
           </div>
           <div className="w-px h-10 bg-slate-100 shrink-0" />
-          <a href={`tel:${d.phone}`}
-            className="flex-1 flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-violet-700 active:scale-[0.98] text-white font-black py-3.5 rounded-2xl transition-all shadow-lg shadow-indigo-200/60 text-sm">
-            <Phone size={16} />Book Consultation
+          <a
+            href={`tel:${d.phone}`}
+            className="flex-1 flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 active:scale-[0.98] text-white font-black py-3.5 rounded-2xl transition-all shadow-lg shadow-indigo-300/40 text-sm"
+          >
+            <Phone size={16} /> Book Consultation
           </a>
         </div>
       </div>
