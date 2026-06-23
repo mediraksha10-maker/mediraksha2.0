@@ -4,11 +4,34 @@ export const getCollections = async (req, res) => {
   try {
     const userId = req.user.id;
     const result = await pool.query(
-      `SELECT c.*, COUNT(cr."reportId")::int as "recordCount"
+      `SELECT
+         c.*,
+         COUNT(cr."reportId")::int as "recordCount",
+         COUNT(CASE WHEN r.category = 'prescription' THEN 1 END)::int as "prescriptionCount",
+         COUNT(CASE WHEN r.category = 'lab' THEN 1 END)::int as "labCount",
+         COUNT(CASE WHEN r.category = 'scan' THEN 1 END)::int as "scanCount",
+         COUNT(CASE WHEN r."isImportant" = true THEN 1 END)::int as "importantCount",
+         COALESCE(
+           (SELECT json_agg(sub.row_data)
+            FROM (
+              SELECT json_build_object(
+                'category', r2.category,
+                'title', r2.title,
+                'visitDate', r2."visitDate"
+              ) as row_data
+              FROM "Report" r2
+              JOIN "CollectionRecord" cr2 ON cr2."reportId" = r2.id
+              WHERE cr2."collectionId" = c.id
+              ORDER BY COALESCE(r2."visitDate", r2."created_at") DESC
+              LIMIT 3
+            ) sub),
+           '[]'::json
+         ) as "recentRecords"
        FROM "Collection" c
        LEFT JOIN "CollectionRecord" cr ON cr."collectionId" = c.id
+       LEFT JOIN "Report" r ON r.id = cr."reportId"
        WHERE c."userId" = $1
-       GROUP BY c.id ORDER BY c."created_at" DESC`,
+       GROUP BY c.id ORDER BY c."updated_at" DESC`,
       [userId]
     );
     return res.json({ success: true, data: result.rows });
@@ -78,9 +101,24 @@ export const getCollectionDetail = async (req, res) => {
     const [colRes, recRes] = await Promise.all([
       pool.query(`SELECT * FROM "Collection" WHERE "id"=$1 AND "userId"=$2`, [id, userId]),
       pool.query(
-        `SELECT r."id",r."recordId",r."title",r."category",r."doctorName",r."visitDate",
+        `SELECT r."id",r."recordId",r."title",r."category",r."doctorName",
+                r."specialization",r."hospital",r."visitDate",
                 r."created_at",r."isImportant",r."isPinned",r."originalFileName",r."mimeType",
-                cr."addedAt"
+                cr."addedAt",
+                COALESCE(
+                  (SELECT COUNT(*) FROM "ReportConnection" rc
+                   WHERE rc."sourceReportId" = r.id OR rc."targetReportId" = r.id),
+                0)::int as "connectionCount",
+                COALESCE(
+                  (SELECT json_agg(
+                     json_build_object('id', t.id, 'name', t.name, 'color', t.color)
+                     ORDER BY t.name
+                   )
+                   FROM "ReportTagAssignment" rta
+                   JOIN "RecordTag" t ON t.id = rta."tagId"
+                   WHERE rta."reportId" = r.id),
+                  '[]'::json
+                ) as "tags"
          FROM "Report" r
          JOIN "CollectionRecord" cr ON cr."reportId" = r.id
          WHERE cr."collectionId" = $1 AND r."userId" = $2

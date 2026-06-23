@@ -6,7 +6,7 @@ import {
   SlidersHorizontal, ArrowUpDown, LayoutGrid, List, Star, Archive,
   Copy, Eye, Clock, CheckCircle2, FileImage, FileArchive, ChevronDown,
   CalendarDays, Pin, Tag, Hash,
-  ChevronUp, Layers
+  Layers
 } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import api from '../api/Api';
@@ -14,7 +14,15 @@ import api from '../api/Api';
 /* ─── Types ─── */
 interface Tag { id: number; name: string; color: string; usageCount?: number; }
 interface CollectionRef { id: number; name: string; }
-interface Collection { id: number; name: string; description: string | null; recordCount: number; created_at: string; records?: CollectionRecord[]; }
+interface RecentRecord { category: string; title: string; visitDate: string | null; }
+interface Collection {
+  id: number; name: string; description: string | null;
+  recordCount: number; prescriptionCount: number; labCount: number;
+  scanCount: number; importantCount: number;
+  created_at: string; updated_at: string;
+  recentRecords: RecentRecord[];
+  records?: CollectionRecord[];
+}
 interface CollectionRecord { id: number; recordId: string; title: string; category: string; doctorName: string | null; visitDate: string | null; created_at: string; isImportant: boolean; isPinned: boolean; originalFileName: string | null; mimeType: string | null; }
 
 interface Report {
@@ -295,11 +303,9 @@ export default function Records() {
   const [summaryError, setSummaryError] = useState('');
 
   /* collections UI */
-  const [expandedCol, setExpandedCol] = useState<number | null>(null);
   const [showNewCol, setShowNewCol] = useState(false);
   const [newColName, setNewColName] = useState('');
   const [newColDesc, setNewColDesc] = useState('');
-  const [_editingCol, _setEditingCol] = useState<Collection | null>(null);
 
   /* context menu */
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
@@ -485,8 +491,9 @@ export default function Records() {
     try {
       const res = await api.post('/user/collections', { name: newColName.trim(), description: newColDesc.trim() || null });
       if (res.data?.success) {
-        setCollections(prev => [res.data.data, ...prev]);
+        setCollections(prev => [{ ...res.data.data, prescriptionCount: 0, labCount: 0, scanCount: 0, importantCount: 0, recentRecords: [] }, ...prev]);
         setNewColName(''); setNewColDesc(''); setShowNewCol(false);
+        navigate(`/collections/${res.data.data.id}`);
       }
     } catch {}
   };
@@ -496,18 +503,6 @@ export default function Records() {
     try {
       await api.delete(`/user/collections/${id}`);
       setCollections(prev => prev.filter(c => c.id !== id));
-      if (expandedCol === id) setExpandedCol(null);
-    } catch {}
-  };
-
-  const handleExpandCollection = async (col: Collection) => {
-    if (expandedCol === col.id) { setExpandedCol(null); return; }
-    try {
-      const res = await api.get(`/user/collections/${col.id}`);
-      if (res.data?.success) {
-        setCollections(prev => prev.map(c => c.id === col.id ? { ...c, records: res.data.data.records } : c));
-        setExpandedCol(col.id);
-      }
     } catch {}
   };
 
@@ -749,94 +744,197 @@ export default function Records() {
   };
 
   /* ─── Collections tab ─── */
+  const JOURNEY_CATEGORY_COLORS: Record<string, { bg: string; text: string; border: string; icon: React.ReactNode }> = {
+    prescription: { bg: 'bg-indigo-50', text: 'text-indigo-600', border: 'border-indigo-200', icon: <Stethoscope size={11} /> },
+    lab:          { bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-200', icon: <FlaskConical size={11} /> },
+    scan:         { bg: 'bg-violet-50', text: 'text-violet-600', border: 'border-violet-200', icon: <ScanLine size={11} /> },
+    discharge:    { bg: 'bg-amber-50', text: 'text-amber-600', border: 'border-amber-200', icon: <ChevronDown size={11} /> },
+    other:        { bg: 'bg-slate-100', text: 'text-slate-500', border: 'border-slate-200', icon: <FileText size={11} /> },
+  };
+
   const CollectionsTab = () => (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-slate-500">{collections.length} collection{collections.length !== 1 ? 's' : ''}</p>
-        <button onClick={() => setShowNewCol(true)} className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold px-4 py-2 rounded-xl transition-all shadow-md shadow-indigo-100">
-          <Plus size={15} /> New Collection
+        <p className="text-sm text-slate-500">
+          {collections.length} medical journey{collections.length !== 1 ? 's' : ''}
+        </p>
+        <button
+          onClick={() => setShowNewCol(true)}
+          className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold px-4 py-2 rounded-xl transition-all shadow-md shadow-indigo-100">
+          <Plus size={15} /> New Journey
         </button>
       </div>
 
+      {/* Create form */}
       {showNewCol && (
         <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-          <h3 className="font-bold text-slate-800 mb-4">Create Collection</h3>
+          <h3 className="font-bold text-slate-800 mb-4">Create Medical Journey</h3>
           <div className="space-y-3">
             <div>
               <label className="block text-xs font-bold text-slate-600 mb-1.5">Name <span className="text-rose-500">*</span></label>
-              <input value={newColName} onChange={e => setNewColName(e.target.value)} placeholder="e.g. My Diabetes Journey"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500" autoFocus />
+              <input
+                value={newColName}
+                onChange={e => setNewColName(e.target.value)}
+                placeholder="e.g. My Diabetes Journey, Knee Surgery 2026"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                autoFocus
+              />
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-600 mb-1.5">Description</label>
-              <input value={newColDesc} onChange={e => setNewColDesc(e.target.value)} placeholder="What records will this contain?"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              <input
+                value={newColDesc}
+                onChange={e => setNewColDesc(e.target.value)}
+                placeholder="What health episode does this track?"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
             </div>
             <div className="flex gap-2 pt-1">
-              <button onClick={() => { setShowNewCol(false); setNewColName(''); setNewColDesc(''); }} className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-sm hover:bg-slate-50 transition-colors">Cancel</button>
-              <button onClick={handleCreateCollection} disabled={!newColName.trim()} className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-sm transition-all">Create</button>
+              <button
+                onClick={() => { setShowNewCol(false); setNewColName(''); setNewColDesc(''); }}
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-sm hover:bg-slate-50 transition-colors">
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateCollection}
+                disabled={!newColName.trim()}
+                className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-sm transition-all">
+                Create & Open
+              </button>
             </div>
           </div>
         </div>
       )}
 
+      {/* Empty state */}
       {collections.length === 0 && !showNewCol && (
         <div className="flex flex-col items-center justify-center py-20 text-center">
-          <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mb-4"><Layers size={28} className="text-slate-300" /></div>
-          <p className="font-bold text-slate-700 text-lg mb-1">No collections yet</p>
-          <p className="text-sm text-slate-400 mb-6 max-w-xs">Group related records into collections like "Knee Surgery 2026" or "My Diabetes Journey".</p>
-          <button onClick={() => setShowNewCol(true)} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold px-5 py-2.5 rounded-xl transition-all shadow-md shadow-indigo-100"><Plus size={16} /> New Collection</button>
+          <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-indigo-50 to-violet-50 border border-indigo-100 flex items-center justify-center mb-5">
+            <Layers size={30} className="text-indigo-300" />
+          </div>
+          <p className="font-black text-slate-700 text-xl mb-2">No medical journeys yet</p>
+          <p className="text-sm text-slate-400 mb-6 max-w-xs">
+            Group your records into journeys like "Knee Surgery 2026" or "Diabetes Management" to see your health history as a timeline.
+          </p>
+          <button
+            onClick={() => setShowNewCol(true)}
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold px-6 py-3 rounded-xl transition-all shadow-md shadow-indigo-100">
+            <Plus size={16} /> New Journey
+          </button>
         </div>
       )}
 
-      {collections.map(col => (
-        <div key={col.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-          <div className="flex items-center gap-4 px-6 py-4 cursor-pointer hover:bg-slate-50 transition-colors" onClick={() => handleExpandCollection(col)}>
-            <div className="w-10 h-10 rounded-xl bg-violet-50 border border-violet-200 flex items-center justify-center text-violet-600 shrink-0"><Layers size={18} /></div>
-            <div className="flex-1 min-w-0">
-              <p className="font-bold text-slate-800">{col.name}</p>
-              {col.description && <p className="text-xs text-slate-400 mt-0.5 truncate">{col.description}</p>}
-            </div>
-            <div className="flex items-center gap-3 shrink-0">
-              <span className="text-xs font-semibold text-slate-400">{col.recordCount} record{col.recordCount !== 1 ? 's' : ''}</span>
-              <button onClick={e => { e.stopPropagation(); handleDeleteCollection(col.id); }} className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"><Trash2 size={14} /></button>
-              {expandedCol === col.id ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />}
-            </div>
-          </div>
+      {/* Journey Cards */}
+      <div className="grid gap-4">
+        {collections.map(col => {
+          const startDate = col.created_at
+            ? new Date(col.created_at).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })
+            : null;
+          const lastDate = col.updated_at
+            ? new Date(col.updated_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+            : null;
 
-          {expandedCol === col.id && (
-            <div className="border-t border-slate-50">
-              {!col.records?.length ? (
-                <div className="px-6 py-8 text-center">
-                  <p className="text-sm text-slate-400">No records in this collection yet.</p>
-                  <p className="text-xs text-slate-300 mt-1">Open a record and add it to this collection from the detail page.</p>
+          return (
+            <div
+              key={col.id}
+              onClick={() => navigate(`/collections/${col.id}`)}
+              className="bg-white rounded-2xl border border-slate-100 shadow-sm hover:border-indigo-200 hover:shadow-md transition-all cursor-pointer group overflow-hidden"
+            >
+              <div className="p-5">
+                {/* Header */}
+                <div className="flex items-start gap-4 mb-4">
+                  <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white shrink-0 shadow-md shadow-indigo-100">
+                    <Layers size={20} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-black text-slate-800 text-base group-hover:text-indigo-700 transition-colors truncate">
+                      {col.name}
+                    </p>
+                    {col.description && (
+                      <p className="text-xs text-slate-400 mt-0.5 truncate">{col.description}</p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={e => { e.stopPropagation(); handleDeleteCollection(col.id); }}
+                      className="w-7 h-7 rounded-lg text-slate-200 hover:text-rose-500 hover:bg-rose-50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all">
+                      <Trash2 size={13} />
+                    </button>
+                    <ChevronRight size={16} className="text-slate-300 group-hover:text-indigo-500 transition-colors" />
+                  </div>
                 </div>
-              ) : (
-                <div className="divide-y divide-slate-50">
-                  {col.records!.map(r => {
-                    const m = fmt(r.category);
-                    return (
-                      <div key={r.id} onClick={() => navigate(`/records/${r.id}`)}
-                        className="flex items-center gap-3 px-6 py-3 hover:bg-slate-50 cursor-pointer group transition-colors">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center border shrink-0 ${m.bg} ${m.color}`}>{m.icon}</div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-sm text-slate-800 group-hover:text-indigo-600 transition-colors truncate">{r.title}</p>
-                          <div className="flex items-center gap-2 text-xs text-slate-400 mt-0.5">
-                            <span className={`font-mono font-bold ${m.color}`}>{r.recordId}</span>
-                            {r.doctorName && <span>· {r.doctorName}</span>}
-                            {r.visitDate && <span>· {new Date(r.visitDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>}
-                          </div>
-                        </div>
-                        <ChevronRight size={14} className="text-slate-300 group-hover:text-slate-500 transition-colors shrink-0" />
-                      </div>
-                    );
-                  })}
+
+                {/* Stats badges */}
+                {col.recordCount > 0 && (
+                  <div className="flex items-center gap-2 flex-wrap mb-4">
+                    <span className="inline-flex items-center gap-1 bg-slate-100 rounded-full px-2.5 py-1 text-[11px] font-bold text-slate-600">
+                      <Layers size={10} /> {col.recordCount} records
+                    </span>
+                    {col.prescriptionCount > 0 && (
+                      <span className="inline-flex items-center gap-1 bg-indigo-50 border border-indigo-200 rounded-full px-2.5 py-1 text-[11px] font-bold text-indigo-700">
+                        <Stethoscope size={10} /> {col.prescriptionCount}
+                      </span>
+                    )}
+                    {col.labCount > 0 && (
+                      <span className="inline-flex items-center gap-1 bg-emerald-50 border border-emerald-200 rounded-full px-2.5 py-1 text-[11px] font-bold text-emerald-700">
+                        <FlaskConical size={10} /> {col.labCount}
+                      </span>
+                    )}
+                    {col.scanCount > 0 && (
+                      <span className="inline-flex items-center gap-1 bg-violet-50 border border-violet-200 rounded-full px-2.5 py-1 text-[11px] font-bold text-violet-700">
+                        <ScanLine size={10} /> {col.scanCount}
+                      </span>
+                    )}
+                    {col.importantCount > 0 && (
+                      <span className="inline-flex items-center gap-1 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-1 text-[11px] font-bold text-amber-700">
+                        <Star size={10} className="fill-amber-400" /> {col.importantCount}
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Mini timeline preview */}
+                {col.recentRecords?.length > 0 && (
+                  <div className="mb-4">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Recent Activity</p>
+                    <div className="flex items-center gap-1 flex-wrap">
+                      {col.recentRecords.map((r, i) => {
+                        const c = JOURNEY_CATEGORY_COLORS[r.category] || JOURNEY_CATEGORY_COLORS.other;
+                        return (
+                          <React.Fragment key={i}>
+                            <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full border ${c.bg} ${c.text} ${c.border}`}>
+                              {c.icon}
+                              <span className="max-w-[100px] truncate">{fmt(r.category).label}</span>
+                            </span>
+                            {i < col.recentRecords.length - 1 && (
+                              <ChevronRight size={10} className="text-slate-300 shrink-0" />
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Footer: dates */}
+                <div className="flex items-center justify-between text-[11px] text-slate-400 pt-3 border-t border-slate-50">
+                  {startDate && <span>Started {startDate}</span>}
+                  {lastDate && <span>Last updated {lastDate}</span>}
+                </div>
+              </div>
+
+              {/* Empty state inside card */}
+              {col.recordCount === 0 && (
+                <div className="px-5 pb-4">
+                  <div className="bg-slate-50 rounded-xl px-4 py-3 text-center">
+                    <p className="text-xs text-slate-400">No records yet — click to open and add records</p>
+                  </div>
                 </div>
               )}
             </div>
-          )}
-        </div>
-      ))}
+          );
+        })}
+      </div>
     </div>
   );
 
