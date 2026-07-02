@@ -4,7 +4,7 @@ WORKDIR /app
 
 COPY package*.json ./
 COPY frontend/package*.json ./frontend/
-COPY backend-server/package*.json ./backend-server/
+COPY backend/package*.json ./backend/
 
 RUN npm install
 
@@ -12,7 +12,7 @@ COPY . .
 
 RUN npm run build
 
-ENV JWT_SECRET=abc
+ENV JWT_SECRET=
 ENV DB_URL=postgres
 ENV GROQ_API_KEY=abc
 ENV FRONTEND_URL=http://localhost:5173
