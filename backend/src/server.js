@@ -42,13 +42,13 @@ app.use('/api/hospital', hospitalRoutes);
 app.use('/api/disease', diseaseRoutes);
 
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/dist', 'index.html'));
+  res.sendFile(path.join(__dirname, '../../frontend/dist', 'index.html'));
 });
 
 // Start the server after connecting to the database
 connectDB().then(() => {
   seed();
-  const PORT = process.env.PORT || 3000;
+  const PORT = process.env.PORT || 8000;
   app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}/api`);
   });
