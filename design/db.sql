@@ -83,6 +83,19 @@ CREATE TABLE "Report" (
     "updated_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Appointment Report Table
+CREATE TABLE "AppointmentReport" (
+    "id" SERIAL PRIMARY KEY,
+    "appointmentId" INTEGER NOT NULL,
+    "userId" INTEGER NOT NULL,
+    "fileName" VARCHAR NOT NULL,
+    "fileUrl" VARCHAR,
+    "fileData" TEXT,
+    "fileSize" INTEGER,
+    "mimeType" VARCHAR,
+    "uploaded_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Hospital Table
 CREATE TABLE "Hospital" (
     "id" SERIAL PRIMARY KEY,

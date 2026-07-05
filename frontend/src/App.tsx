@@ -19,7 +19,6 @@ import Map from "./service/Map"
 import Hospital from "./service/Hospital"
 // import Health from "./service/Health" removing
 import Disease from "./service/Disease"
-import Chat from "./service/Chat"
 import Appointment from "./service/Appointment"
 import AddDoctor from "./service/AddDoctor"
 
@@ -57,7 +56,6 @@ function App() {
           <Route path="/services" element={<Services />} />
           {/* Login not require */}
           <Route path="/map" element={<Map />} />
-          <Route path="/chat" element={<Chat />} />
           <Route path="/hospital" element={<Hospital />} />
           <Route path="/disease" element={<Disease />} />
 

@@ -23,6 +23,12 @@ import {
   getAvailableSlots 
 } from '../controllers/appointmentController.js';
 
+import {
+  getUserAppointmentReportById,
+  getUserAppointmentReports,
+  uploadAppointmentReports
+} from '../controllers/appointmentReportController.js';
+
 import { 
   getMyDoctor, 
   getDoctorByName, 
@@ -70,6 +76,34 @@ const uploadReportFile = (req, res, next) => {
   });
 };
 
+const appointmentReportUpload = multer({
+  storage: storage,
+  limits: { fileSize: 5 * 1024 * 1024, files: 10 },
+  fileFilter: (_req, file, cb) => {
+    if (['application/pdf', 'image/jpeg', 'image/png'].includes(file.mimetype)) {
+      cb(null, true);
+      return;
+    }
+
+    cb(new Error('Only PDF, JPG, and PNG files are allowed.'));
+  }
+});
+
+const uploadAppointmentReportFiles = (req, res, next) => {
+  appointmentReportUpload.array('files', 10)(req, res, (error) => {
+    if (!error) {
+      next();
+      return;
+    }
+
+    const message = error.code === 'LIMIT_FILE_SIZE'
+      ? 'File is too large. Maximum size is 5MB.'
+      : error.message || 'Invalid file upload.';
+
+    res.status(400).json({ success: false, message });
+  });
+};
+
 // All routes here are automatically prefixed with /api/user and protected by authVerify
 
 /* ==========================================
@@ -92,6 +126,9 @@ router.delete('/info/delete', deleteUserAccount);
     APPOINTMENT/MEETING MANAGEMENT ROUTES
    ========================================== */
 router.get('/meetings/all', getAllMeetings);
+router.post('/meetings/:id/reports', uploadAppointmentReportFiles, uploadAppointmentReports);
+router.get('/meetings/:id/reports', getUserAppointmentReports);
+router.get('/meetings/:id/reports/:reportId', getUserAppointmentReportById);
 router.get('/meetings/:id', getMeetingById);
 router.delete('/meetings/:id', deleteMeeting);
 router.post('/meetings/book', bookMeeting);

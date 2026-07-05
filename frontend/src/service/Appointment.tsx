@@ -1,7 +1,7 @@
 import { useState, useEffect, type ChangeEvent } from "react";
 import {
   ArrowLeft, Search, Calendar as CalIcon, Clock,
-  User, Trash2, CheckCircle
+  User, Trash2, CheckCircle, Paperclip, Upload as UploadIcon, FileText
 } from "lucide-react";
 import { useNavigate } from "react-router";
 import api from '../api/Api';
@@ -28,7 +28,15 @@ interface Appointment {
   appointmentDate: string;
   slotTime: string;
   reasonOfAppointment?: string;
-  status: "pending" | "confirmed" | "cancelled";
+  status: "pending" | "confirmed" | "cancelled" | "completed";
+}
+
+interface AppointmentReport {
+  id: number;
+  appointment_id: string;
+  file_name: string;
+  file_url: string;
+  uploaded_at: string;
 }
 
 interface FormState {
@@ -44,6 +52,7 @@ const STATUS_CONFIG = {
   pending:   { class: "bg-amber-50 text-amber-700 border-amber-200" },
   confirmed: { class: "bg-emerald-50 text-emerald-700 border-emerald-200" },
   cancelled: { class: "bg-rose-50 text-rose-700 border-rose-200" },
+  completed: { class: "bg-sky-50 text-sky-700 border-sky-200" },
 };
 
 const APP_TIME_ZONE = "Asia/Kolkata";
@@ -59,6 +68,11 @@ export default function AppointmentCalendar() {
   const [isFetching,   setIsFetching]   = useState<boolean>(true);
   const [error,        setError]        = useState<string>("");
   const [successMsg,   setSuccessMsg]   = useState<string>("");
+  const [selectedReportFiles, setSelectedReportFiles] = useState<Record<string, File[]>>({});
+  const [reportsByAppointment, setReportsByAppointment] = useState<Record<string, AppointmentReport[]>>({});
+  const [reportUploadMessages, setReportUploadMessages] = useState<Record<string, string>>({});
+  const [uploadingReportId, setUploadingReportId] = useState<string | null>(null);
+  const [openReportUploader, setOpenReportUploader] = useState<Record<string, boolean>>({});
 
   const [form, setForm] = useState<FormState>({
     doctorId: "",
@@ -71,12 +85,34 @@ export default function AppointmentCalendar() {
 
   const navigate = useNavigate();
 
+  const fetchReportsForAppointments = async (appointmentIds: string[]) => {
+    if (appointmentIds.length === 0) {
+      setReportsByAppointment({});
+      return;
+    }
+
+    const reportEntries = await Promise.all(
+      appointmentIds.map(async (appointmentId) => {
+        try {
+          const response = await api.get(`/user/meetings/${appointmentId}/reports`);
+          return [appointmentId, response.data?.data || []] as const;
+        } catch {
+          return [appointmentId, []] as const;
+        }
+      })
+    );
+
+    setReportsByAppointment(Object.fromEntries(reportEntries));
+  };
+
   const fetchMeetings = async () => {
     try {
       setIsFetching(true);
       const response = await api.get('/user/meetings/all');
       if (response.data?.success) {
-        setMeetings(response.data.data || []);
+        const appointmentList = response.data.data || [];
+        setMeetings(appointmentList);
+        await fetchReportsForAppointments(appointmentList.map((meeting: Appointment) => String(meeting.id)));
       }
     } catch (err: any) {
       if (err.response?.status === 401) navigate('/auth');
@@ -239,6 +275,91 @@ export default function AppointmentCalendar() {
     setFilteredSlots([]);
   };
 
+  const handleReportFileChange = (appointmentId: string, event: ChangeEvent<HTMLInputElement>) => {
+    setSelectedReportFiles((prev) => ({
+      ...prev,
+      [appointmentId]: Array.from(event.target.files || [])
+    }));
+  };
+
+  const handleUploadAppointmentReports = async (appointmentId: string) => {
+    const files = selectedReportFiles[appointmentId] || [];
+    if (files.length === 0) {
+      setReportUploadMessages((prev) => ({ ...prev, [appointmentId]: "Choose a PDF, JPG, or PNG report first." }));
+      return;
+    }
+
+    const formData = new FormData();
+    files.forEach((file) => formData.append("files", file));
+
+    setUploadingReportId(appointmentId);
+    try {
+      const response = await api.post(`/user/meetings/${appointmentId}/reports`, formData, {
+        headers: { "Content-Type": "multipart/form-data" }
+      });
+
+      const uploadedReports: AppointmentReport[] = response.data?.data || [];
+      setReportsByAppointment((prev) => ({
+        ...prev,
+        [appointmentId]: [...uploadedReports, ...(prev[appointmentId] || [])]
+      }));
+      setSelectedReportFiles((prev) => ({ ...prev, [appointmentId]: [] }));
+      setReportUploadMessages((prev) => ({ ...prev, [appointmentId]: "Report uploaded successfully" }));
+    } catch (err: any) {
+      setReportUploadMessages((prev) => ({
+        ...prev,
+        [appointmentId]: err.response?.data?.message || "Report upload failed."
+      }));
+    } finally {
+      setUploadingReportId(null);
+    }
+  };
+
+  const renderReportUpload = (appointmentId: string, mode: "confirmation" | "card") => {
+    const reports = reportsByAppointment[appointmentId] || [];
+    const selectedFiles = selectedReportFiles[appointmentId] || [];
+    const message = reportUploadMessages[appointmentId];
+    const isUploading = uploadingReportId === appointmentId;
+
+    return (
+      <div className={`${mode === "confirmation" ? "bg-slate-50 border border-slate-200 rounded-xl p-3" : "mt-3 pt-3 border-t border-slate-50"} space-y-2`}>
+        <div className="flex items-center gap-1.5 text-xs font-black text-slate-700">
+          <Paperclip size={14} />
+          {mode === "confirmation" ? "Upload Reports (Optional)" : "Attach Report"}
+        </div>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <input
+            type="file"
+            multiple
+            accept=".pdf,.jpg,.jpeg,.png"
+            onChange={(event) => handleReportFileChange(appointmentId, event)}
+            className="min-w-0 flex-1 text-xs text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-white file:px-3 file:py-2 file:text-xs file:font-bold file:text-slate-700 hover:file:bg-slate-100"
+          />
+          <button
+            type="button"
+            onClick={() => handleUploadAppointmentReports(appointmentId)}
+            disabled={isUploading || selectedFiles.length === 0}
+            className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400"
+          >
+            <UploadIcon size={13} />
+            {isUploading ? "Uploading..." : mode === "confirmation" ? "Upload to this Appointment" : "Upload"}
+          </button>
+        </div>
+        {message && (
+          <p className={`text-[11px] font-semibold ${message.includes("success") ? "text-emerald-700" : "text-rose-600"}`}>
+            {message}
+          </p>
+        )}
+        {reports.length > 0 && (
+          <div className="text-[11px] text-slate-500">
+            <span className="font-bold text-slate-600">Uploaded Reports: </span>
+            {reports.map((report) => report.file_name).join(", ")}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 py-8 px-4 md:px-8">
       <div className="max-w-4xl mx-auto space-y-6">
@@ -269,7 +390,6 @@ export default function AppointmentCalendar() {
               <CheckCircle size={16} /> {successMsg}
             </div>
           )}
-
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             
             {/* Doctor Search Field */}
@@ -420,6 +540,26 @@ export default function AppointmentCalendar() {
                     {m.reasonOfAppointment && (
                       <p className="text-xs text-slate-500 bg-slate-50 p-2 rounded-lg mt-2 italic">
                         "{m.reasonOfAppointment}"
+                      </p>
+                    )}
+
+                    {m.status !== "completed" && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setOpenReportUploader((prev) => ({ ...prev, [m.id]: !prev[m.id] }))}
+                          className="mt-3 inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-700"
+                        >
+                          <FileText size={13} />
+                          Upload Report
+                        </button>
+                        {openReportUploader[m.id] && renderReportUpload(m.id, "card")}
+                      </>
+                    )}
+                    {(m.status === "completed" || !openReportUploader[m.id]) && (reportsByAppointment[m.id] || []).length > 0 && (
+                      <p className="mt-2 text-[11px] text-slate-500">
+                        <span className="font-bold text-slate-600">Uploaded Reports: </span>
+                        {(reportsByAppointment[m.id] || []).map((report) => report.file_name).join(", ")}
                       </p>
                     )}
                   </div>
