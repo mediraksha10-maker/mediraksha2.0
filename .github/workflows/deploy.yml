@@ -23,8 +23,7 @@ jobs:
       - name: Build and Push Backend Image
         uses: docker/build-push-action@v5
         with:
-          context: ./
-          file: ./Dockerfile
+          file: Dockerfile
           push: true
           tags: |
             ghcr.io/${{ github.actor }}/mediraksha-app:latest
