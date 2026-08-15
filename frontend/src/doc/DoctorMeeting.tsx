@@ -19,12 +19,12 @@ interface Appointment {
 
 interface SharedReport {
   id: number;
-  title: string;
-  category: string;
-  mimeType?: string;
-  originalFileName?: string;
-  fileData?: string;
-  created_at: string;
+  appointment_id: number;
+  file_name: string;
+  file_url: string;
+  mime_type?: string;
+  file_data?: string;
+  uploaded_at: string;
 }
 
 type PreviewType = "image" | "pdf" | "other" | null;
@@ -36,6 +36,7 @@ export default function DoctorMeetings() {
   const [actionId, setActionId] = useState<number | null>(null);
   const [selectedMeeting, setSelectedMeeting] = useState<Appointment | null>(null);
   const [sharedReports, setSharedReports] = useState<SharedReport[]>([]);
+  const [loadingSharedReports, setLoadingSharedReports] = useState<boolean>(false);
   const [previewFile, setPreviewFile] = useState<string | null>(null);
   const [previewType, setPreviewType] = useState<PreviewType>(null);
 
@@ -77,18 +78,26 @@ export default function DoctorMeetings() {
   // --- Fetch detailed context for single modal view ---
   const handleViewDetails = async (id: number) => {
     try {
-      const [response, reportsResponse] = await Promise.all([
-        api.get(`/doctor/meetings/${id}`),
-        api.get(`/doctor/meetings/${id}/reports`),
-      ]);
+      const response = await api.get(`/doctor/meetings/${id}`);
       if (response.data && response.data.success) {
         setSelectedMeeting(response.data.data);
       }
+    } catch (error: any) {
+      alert(error.response?.data?.message || "Could not retrieve appointment details.");
+      return;
+    }
+
+    setSharedReports([]);
+    setLoadingSharedReports(true);
+    try {
+      const reportsResponse = await api.get(`/doctor/meetings/${id}/reports`);
       if (reportsResponse.data?.success) {
         setSharedReports(reportsResponse.data.data || []);
       }
     } catch (error: any) {
-      alert(error.response?.data?.message || "Could not retrieve appointment details.");
+      alert(error.response?.data?.message || "Could not retrieve appointment reports.");
+    } finally {
+      setLoadingSharedReports(false);
     }
   };
 
@@ -129,7 +138,6 @@ export default function DoctorMeetings() {
         if (selectedMeeting?.Id === id) {
           if (action === "complete") {
             setSelectedMeeting({ ...selectedMeeting, status: "completed" });
-            setSharedReports([]);
           } else {
             setSelectedMeeting({ ...selectedMeeting, status: "confirmed" });
           }
@@ -142,24 +150,24 @@ export default function DoctorMeetings() {
     }
   };
 
-  const getPreviewType = (mimeType?: string, originalFileName = ""): PreviewType => {
-    if (mimeType === "application/pdf" || /\.pdf$/i.test(originalFileName)) return "pdf";
-    if (mimeType?.startsWith("image/") || /\.(jpg|jpeg|png|gif|webp)$/i.test(originalFileName)) return "image";
-    return "other";
-  };
-
   const handleReportPreview = async (report: SharedReport) => {
     if (!selectedMeeting) return;
 
     try {
       const response = await api.get(`/doctor/meetings/${selectedMeeting.Id}/reports/${report.id}`);
       const fullReport: SharedReport = response.data.data;
-      if (!fullReport?.fileData) {
+      if (!fullReport?.file_data) {
         alert("Report file data is missing.");
         return;
       }
-      setPreviewType(getPreviewType(fullReport.mimeType, fullReport.originalFileName));
-      setPreviewFile(`data:${fullReport.mimeType || "application/octet-stream"};base64,${fullReport.fileData}`);
+      const byteCharacters = atob(fullReport.file_data);
+      const byteNumbers = Array.from(byteCharacters, (character) => character.charCodeAt(0));
+      const blob = new Blob([new Uint8Array(byteNumbers)], {
+        type: fullReport.mime_type || "application/octet-stream"
+      });
+      const blobUrl = URL.createObjectURL(blob);
+      window.open(blobUrl, "_blank", "noopener,noreferrer");
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
     } catch (error: any) {
       alert(error.response?.data?.message || "Could not preview report.");
     }
@@ -176,6 +184,16 @@ export default function DoctorMeetings() {
     const parsed = new Date(Number(year), Number(month) - 1, Number(day));
     return Number.isNaN(parsed.getTime()) ? date : parsed.toLocaleDateString(undefined, { dateStyle: "medium" });
   };
+
+  const formatReportDate = (date: string) => (
+    new Date(date).toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit"
+    })
+  );
 
   // Helper Badge Colors for Meeting Status
   const getStatusBadge = (status: Appointment['status']) => {
@@ -380,20 +398,29 @@ export default function DoctorMeetings() {
 
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Shared Reports</p>
-                {sharedReports.length > 0 ? (
+                {loadingSharedReports ? (
+                  <div className="bg-slate-50 rounded-xl p-4 flex items-center justify-center">
+                    <div className="w-5 h-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+                  </div>
+                ) : sharedReports.length > 0 ? (
                   <div className="space-y-2">
                     {sharedReports.map((report) => (
-                      <button
-                        key={report.id}
-                        onClick={() => handleReportPreview(report)}
-                        className="w-full flex items-center justify-between gap-3 bg-slate-50 hover:bg-indigo-50 border border-slate-100 rounded-xl p-3 text-left transition-colors"
-                      >
-                        <span className="min-w-0">
-                          <span className="block text-sm font-bold text-slate-800 truncate">{report.title || report.originalFileName}</span>
-                          <span className="block text-[10px] text-slate-400 uppercase font-bold">{report.category || "other"} · {new Date(report.created_at).toLocaleDateString()}</span>
-                        </span>
-                        <Eye size={15} className="text-indigo-600 shrink-0" />
-                      </button>
+                      <div key={report.id} className="flex items-center justify-between gap-3 bg-slate-50 border border-slate-100 rounded-xl p-3">
+                        <div className="min-w-0 flex items-start gap-2">
+                          <FileText size={16} className="text-slate-500 shrink-0 mt-0.5" />
+                          <div className="min-w-0">
+                            <p className="text-sm font-bold text-slate-800 truncate">{report.file_name}</p>
+                            <p className="text-[11px] text-slate-400 font-semibold">Uploaded {formatReportDate(report.uploaded_at)}</p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleReportPreview(report)}
+                          className="shrink-0 px-3 py-1.5 rounded-lg bg-white hover:bg-indigo-50 border border-slate-200 text-xs font-bold text-indigo-600 transition-colors"
+                        >
+                          View
+                        </button>
+                      </div>
                     ))}
                   </div>
                 ) : (

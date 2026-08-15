@@ -10,7 +10,6 @@ import { pool, connectDB } from './config/db.js';
 import authRoutes from './routes/authRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import doctorRoutes from './routes/doctorRoutes.js';
-import aiRoutes from './routes/aiRoutes.js';
 import hospitalRoutes from './routes/hospitalRoutes.js';
 import diseaseRoutes from './routes/diseaseRoutes.js';
 import authVerify from './middlewares/authVerify.js';
@@ -37,7 +36,6 @@ app.get('/api', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/user', authVerify, userRoutes);
 app.use('/api/doctor', authVerify, doctorRoutes);
-app.use('/api/chat', aiRoutes);
 app.use('/api/hospital', hospitalRoutes);
 app.use('/api/disease', diseaseRoutes);
 

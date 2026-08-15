@@ -103,6 +103,19 @@ export default async function seed() {
                 "updated_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 
+            -- Appointment Report Table
+            CREATE TABLE IF NOT EXISTS "AppointmentReport" (
+                "id" SERIAL PRIMARY KEY,
+                "appointmentId" INTEGER NOT NULL,
+                "userId" INTEGER NOT NULL,
+                "fileName" VARCHAR NOT NULL,
+                "fileUrl" VARCHAR,
+                "fileData" TEXT,
+                "fileSize" INTEGER,
+                "mimeType" VARCHAR,
+                "uploaded_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
             -- Hospital Table
             CREATE TABLE IF NOT EXISTS "Hospital" (
                 "id" SERIAL PRIMARY KEY,
