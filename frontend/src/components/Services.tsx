@@ -22,7 +22,7 @@ const quickActions: QuickAction[] = [
     icon: <ClipboardMinus size={28} />,
     description: "Securely upload, encrypt, and manage your health records in the vault.",
     style: "bg-purple-50 text-purple-600 ring-purple-100",
-    view: "/upload",
+    view: "/records",
     accent: "purple"
   },
   {
@@ -84,6 +84,7 @@ export default function Service() {
       </div>
 
       <main className="grow max-w-7xl mx-auto w-full px-6 py-12">
+
         {/* --- SERVICE GRID --- */}
         <section>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -135,7 +136,7 @@ export default function Service() {
             <h2 className="text-3xl font-bold mb-2">Can't find a specific service?</h2>
             <p className="text-indigo-200">Our medical assistance team is available 24/7 for support.</p>
           </div>
-          <button 
+          <button
             onClick={() => alert("Support ticket opened.")}
             className="bg-white text-indigo-900 hover:bg-indigo-50 px-10 py-4 rounded-2xl font-bold transition-colors whitespace-nowrap shadow-md text-sm"
           >
