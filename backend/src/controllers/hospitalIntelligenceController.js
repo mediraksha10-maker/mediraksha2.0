@@ -13,7 +13,6 @@ import {
   VALID_FACILITY_TYPES,
 } from '../services/hospital/hospitalDataService.js';
 import { findHospitalsNearby, searchHospitals } from '../services/hospital/hospitalSearchService.js';
-import { matchHospitalForEmergency } from '../services/hospital/hospitalMatchingEngine.js';
 import { bulkImportHospitals, getImportProvider } from '../services/hospital/hospitalImportInterface.js';
 
 // ── Shared validators ─────────────────────────────────────────────────────────
@@ -22,8 +21,6 @@ const isValidCoord = (lat, lng) => {
   const la = parseFloat(lat), lo = parseFloat(lng);
   return !isNaN(la) && !isNaN(lo) && la >= -90 && la <= 90 && lo >= -180 && lo <= 180;
 };
-
-const EMERGENCY_ID_RE = /^EMG-\d{4}-\d{6}$/;
 
 const parseIntParam = (v, fallback) => {
   const n = parseInt(v, 10);
@@ -318,57 +315,6 @@ export const addContactHandler = async (req, res) => {
     return res.status(201).json({ success: true, message: 'Contact added', data: contact });
   } catch (err) {
     console.error('addContactHandler error:', err);
-    return res.status(500).json({ success: false, message: 'Internal server error' });
-  }
-};
-
-// ── Emergency–Hospital Matching ───────────────────────────────────────────────
-
-export const matchHospitalForEmergencyHandler = async (req, res) => {
-  try {
-    const userId       = req.user.id;
-    const { emergency_id } = req.params;
-
-    if (!EMERGENCY_ID_RE.test(emergency_id)) {
-      return res.status(400).json({ success: false, message: 'Invalid emergency ID format' });
-    }
-
-    const { rows: [emergencyCase] } = await pool.query(
-      `SELECT id, user_id, status, latitude, longitude
-       FROM emergency_cases WHERE emergency_id = $1`,
-      [emergency_id]
-    );
-
-    if (!emergencyCase) {
-      return res.status(404).json({ success: false, message: 'Emergency not found' });
-    }
-    if (emergencyCase.user_id !== userId) {
-      return res.status(403).json({ success: false, message: 'Not authorized for this emergency' });
-    }
-
-    const radiusKm = req.body?.radius ? parseFloat(req.body.radius) : 10;
-
-    const result = await matchHospitalForEmergency(
-      emergencyCase.id,
-      parseFloat(emergencyCase.latitude),
-      parseFloat(emergencyCase.longitude),
-      { radiusKm: isNaN(radiusKm) ? 10 : Math.min(Math.max(1, radiusKm), 50) }
-    );
-
-    if (!result.matched) {
-      return res.status(404).json({ success: false, message: result.reason });
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: 'Hospital matched successfully',
-      data: result,
-    });
-  } catch (err) {
-    if (err.message?.includes('status')) {
-      return res.status(409).json({ success: false, message: err.message });
-    }
-    console.error('matchHospitalForEmergencyHandler error:', err);
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };

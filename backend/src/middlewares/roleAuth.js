@@ -8,7 +8,6 @@
 
 export const ROLES = Object.freeze({
   USER:              'USER',
-  AMBULANCE_DRIVER:  'AMBULANCE_DRIVER',
   HOSPITAL_ADMIN:    'HOSPITAL_ADMIN',
   OPERATIONS_TEAM:   'OPERATIONS_TEAM',
   SUPER_ADMIN:       'SUPER_ADMIN',
@@ -17,7 +16,6 @@ export const ROLES = Object.freeze({
 // Numeric rank — higher number = more authority
 const ROLE_RANK = {
   USER:              1,
-  AMBULANCE_DRIVER:  2,
   HOSPITAL_ADMIN:    3,
   OPERATIONS_TEAM:   4,
   SUPER_ADMIN:       5,

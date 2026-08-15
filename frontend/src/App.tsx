@@ -25,7 +25,6 @@ import Disease from "./service/Disease"
 import Chat from "./service/Chat"
 import Appointment from "./service/Appointment"
 import AddDoctor from "./service/AddDoctor"
-import EmergencyFlow from "./pages/EmergencyFlow"
 
 function App() {
   const [isLoading, setIsLoading] = useState(true);
@@ -74,8 +73,6 @@ function App() {
           <Route path="/doctoravailability" element={<Navigate to="/appointment" replace />} />
           <Route path="/adddoctor" element={<AddDoctor />} />
 
-          {/* Emergency Response (full-screen, no nav) */}
-          <Route path="/emergency" element={<EmergencyFlow />} />
 
         </Routes>
       </div>

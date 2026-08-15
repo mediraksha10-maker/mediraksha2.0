@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link } from "react-router";
 import {
   Brain, MapPin, ArrowRight,
-  ChevronLeft, ChevronRight, Stethoscope, FileText, ShieldAlert
+  ChevronLeft, ChevronRight, Stethoscope, FileText
 } from "lucide-react";
 
 /* ─────────────────────────────────────────────
@@ -162,7 +162,6 @@ const services = [
 export default function Dashboard() {
   const [current, setCurrent] = useState<number>(0);
   const [animating, setAnimating] = useState<boolean>(false);
-  const navigate = useNavigate();
 
   const go = useCallback((next: number) => {
     if (animating) return;
@@ -251,42 +250,6 @@ export default function Dashboard() {
                 }}
               />
             ))}
-          </div>
-        </section>
-
-        {/* ── EMERGENCY STRIP ── */}
-        <section
-          className="relative overflow-hidden rounded-2xl bg-linear-to-r from-rose-700 via-rose-600 to-rose-500 shadow-lg"
-        >
-          {/* decorative rings */}
-          <div className="absolute -right-8 -top-8 w-40 h-40 rounded-full bg-white/5 pointer-events-none" />
-          <div className="absolute -right-2 -top-2 w-24 h-24 rounded-full bg-white/5 pointer-events-none" />
-
-          <div className="relative flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-5">
-            <div className="flex items-center gap-4">
-              {/* pulsing icon */}
-              <div className="relative shrink-0">
-                <div className="absolute inset-0 rounded-full bg-white/30 animate-ping" />
-                <div className="relative w-11 h-11 rounded-full bg-white/20 border border-white/30 flex items-center justify-center text-white">
-                  <ShieldAlert size={20} />
-                </div>
-              </div>
-              <div>
-                <p className="font-black text-white text-lg leading-tight">
-                  Facing a Medical Emergency?
-                </p>
-                <p className="text-rose-100 text-sm mt-0.5">
-                  Tap SOS — we'll locate you and alert services instantly.
-                </p>
-              </div>
-            </div>
-
-            <button
-              onClick={() => navigate('/emergency')}
-              className="shrink-0 bg-white text-rose-600 hover:bg-rose-50 active:scale-95 font-black px-8 py-3 rounded-xl transition-all text-sm uppercase tracking-widest shadow-md"
-            >
-              SOS
-            </button>
           </div>
         </section>
 

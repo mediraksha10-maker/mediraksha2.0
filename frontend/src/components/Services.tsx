@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ClipboardMinus, CalendarCheck2, BriefcaseMedical, Search, ArrowRight, ShieldAlert, Phone } from "lucide-react";
+import { ClipboardMinus, CalendarCheck2, BriefcaseMedical, Search, ArrowRight } from "lucide-react";
 import Navbar from "./Navbar";
 import { useNavigate } from "react-router";
 
@@ -84,69 +84,6 @@ export default function Service() {
       </div>
 
       <main className="grow max-w-7xl mx-auto w-full px-6 py-12">
-
-        {/* --- EMERGENCY FEATURED CARD --- */}
-        <section className="mb-10">
-          <div className="relative overflow-hidden rounded-[2rem] bg-linear-to-br from-rose-700 via-rose-600 to-rose-500 p-8 md:p-10">
-            {/* decorative circles */}
-            <div className="absolute -right-12 -bottom-12 w-56 h-56 rounded-full bg-white/5 pointer-events-none" />
-            <div className="absolute -right-4 -bottom-4 w-32 h-32 rounded-full bg-white/5 pointer-events-none" />
-            <div className="absolute top-6 right-28 w-16 h-16 rounded-full bg-white/5 pointer-events-none" />
-
-            <div className="relative flex flex-col md:flex-row items-start md:items-center justify-between gap-8">
-              <div className="flex items-start gap-5">
-                {/* pulsing icon */}
-                <div className="relative shrink-0 mt-1">
-                  <div className="absolute inset-0 rounded-full bg-white/30 animate-ping" />
-                  <div className="relative w-14 h-14 rounded-full bg-white/20 border border-white/30 flex items-center justify-center text-white">
-                    <ShieldAlert size={26} />
-                  </div>
-                </div>
-
-                <div>
-                  <span className="inline-block text-[10px] font-black uppercase tracking-[0.2em] px-3 py-1 rounded-full bg-white/20 text-white/90 mb-3">
-                    Critical Response
-                  </span>
-                  <h2 className="text-3xl font-black text-white tracking-tight leading-tight">
-                    Facing a Medical Emergency?
-                  </h2>
-                  <p className="text-rose-100 text-sm mt-2 max-w-md leading-relaxed">
-                    One tap triggers SOS — we instantly capture your GPS, issue a secure hospital token,
-                    and notify your emergency contacts.
-                  </p>
-
-                  <div className="flex flex-wrap gap-4 mt-4">
-                    {[
-                      'GPS location captured',
-                      'Emergency contacts alerted',
-                      'Hospital-ready access token',
-                    ].map((label) => (
-                      <span key={label} className="flex items-center gap-1.5 text-xs text-rose-100">
-                        <span className="w-1.5 h-1.5 rounded-full bg-rose-200 shrink-0" />
-                        {label}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-3 shrink-0">
-                <button
-                  onClick={() => navigate('/emergency')}
-                  className="bg-white text-rose-600 hover:bg-rose-50 active:scale-95 font-black px-10 py-4 rounded-2xl transition-all text-sm uppercase tracking-widest shadow-xl whitespace-nowrap"
-                >
-                  Trigger SOS
-                </button>
-                <a
-                  href="tel:112"
-                  className="flex items-center justify-center gap-2 border border-white/30 hover:bg-white/10 text-white font-semibold px-6 py-3 rounded-2xl transition-all text-sm"
-                >
-                  <Phone size={15} /> Call 112
-                </a>
-              </div>
-            </div>
-          </div>
-        </section>
 
         {/* --- SERVICE GRID --- */}
         <section>

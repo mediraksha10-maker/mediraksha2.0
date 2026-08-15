@@ -22,7 +22,11 @@ docker run -d \
 ```
 docker exec -it mediraksha psql -U <username> -d <dbname>
 ```
-# run the queries which is inside ./design/db.sql file
+# run the schema, then the seed data
+# psql -U <username> -d <dbname> -f design/schema.sql
+# psql -U <username> -d <dbname> -f design/seed.sql
+# both files are idempotent (CREATE TABLE IF NOT EXISTS + ON CONFLICT DO NOTHING),
+# so re-running them after a partial/failed setup is always safe.
 # db url will be postgresql://<username>:<password>@localhost:5433/<dbname> to connect
 
 # environment variables

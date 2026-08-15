@@ -13,10 +13,7 @@ import doctorRoutes from './routes/doctorRoutes.js';
 import aiRoutes from './routes/aiRoutes.js';
 import hospitalRoutes from './routes/hospitalRoutes.js';
 import diseaseRoutes from './routes/diseaseRoutes.js';
-import emergencyRoutes from './routes/emergencyRoutes.js';
 import hospitalIntelligenceRoutes from './routes/hospitalIntelligenceRoutes.js';
-import ambulanceRoutes            from './routes/ambulanceRoutes.js';
-import patientRoutes              from './routes/patientRoutes.js';
 import reviewRoutes               from './routes/reviewRoutes.js';
 import authVerify from './middlewares/authVerify.js';
 
@@ -47,10 +44,7 @@ app.use('/api/doctor', authVerify, doctorRoutes);
 app.use('/api/chat', aiRoutes);
 app.use('/api/hospital', hospitalRoutes);
 app.use('/api/disease', diseaseRoutes);
-app.use('/api/emergency', emergencyRoutes);
 app.use('/api/hospitals',   hospitalIntelligenceRoutes);
-app.use('/api/ambulances',  ambulanceRoutes);
-app.use('/api/patient',     patientRoutes);
 app.use('/api/reviews',     reviewRoutes);
 app.use('/', (req, res) => {
   res.status(200).sendFile(path.join(__dirname, '../../frontend/dist', 'index.html'));
