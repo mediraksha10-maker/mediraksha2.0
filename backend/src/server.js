@@ -12,6 +12,8 @@ import userRoutes from './routes/userRoutes.js';
 import doctorRoutes from './routes/doctorRoutes.js';
 import hospitalRoutes from './routes/hospitalRoutes.js';
 import diseaseRoutes from './routes/diseaseRoutes.js';
+import hospitalIntelligenceRoutes from './routes/hospitalIntelligenceRoutes.js';
+import reviewRoutes               from './routes/reviewRoutes.js';
 import authVerify from './middlewares/authVerify.js';
 
 dotenv.config();
@@ -38,9 +40,10 @@ app.use('/api/user', authVerify, userRoutes);
 app.use('/api/doctor', authVerify, doctorRoutes);
 app.use('/api/hospital', hospitalRoutes);
 app.use('/api/disease', diseaseRoutes);
-
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../../frontend/dist', 'index.html'));
+app.use('/api/hospitals',   hospitalIntelligenceRoutes);
+app.use('/api/reviews',     reviewRoutes);
+app.use('/', (req, res) => {
+  res.status(200).sendFile(path.join(__dirname, '../../frontend/dist', 'index.html'));
 });
 
 // Start the server after connecting to the database

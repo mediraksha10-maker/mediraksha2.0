@@ -86,7 +86,7 @@ const slides = [
 const services = [
   {
     icon: <MapPin size={26} />,
-    title: "Nearby Care",
+    title: "MediConnect",
     desc: "Locate certified hospitals and clinics using real-time GPS tracking.",
     to: "/map",
     color: "text-indigo-600",
