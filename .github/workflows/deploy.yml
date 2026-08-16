@@ -26,8 +26,8 @@ jobs:
           file: Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.actor }}/mediraksha-app:latest
-            ghcr.io/${{ github.actor }}/mediraksha-app:${{ github.sha }}
+            ghcr.io/mediraksha10-maker/mediraksha-app:latest
+            ghcr.io/mediraksha10-maker/mediraksha-app:${{ github.sha }}
 
 
   deploy:
