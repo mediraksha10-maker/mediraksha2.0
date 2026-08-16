@@ -6,7 +6,7 @@ import {
   ArrowLeft, BedDouble, MapPin, Navigation, LocateFixed, Search, Building2,
   Stethoscope, Phone, Filter, X, Star, Clock, ChevronRight, FlaskConical,
   Pill, Package, Users, Scale, CheckCircle, SlidersHorizontal, Activity,
-  ShieldCheck, Heart, Globe, Award, Briefcase, LayoutGrid, List as ListIcon,
+  ShieldCheck, Heart, Globe, Award, Briefcase, LayoutGrid, 
   Zap, ArrowUpDown,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router";
@@ -1758,7 +1758,7 @@ export default function Map() {
     } finally { setBookingId(null); }
   };
 
-  const openDirections = (lat: number, lon: number, name: string) => {
+  const openDirections = (lat: number, lon: number) => {
     const base = position ? `&origin=${position[0]},${position[1]}` : "";
     window.open(`https://www.google.com/maps/dir/?api=1${base}&destination=${lat},${lon}&travelmode=driving`, "_blank");
   };
@@ -1880,13 +1880,13 @@ export default function Map() {
     { id:"pharmacies", emoji:"💊", label:"Pharmacies",           count:`${PHARMACIES.length} Stores`,    color:"rose" },
     { id:"packages",   emoji:"📦", label:"Health Packages",      count:`${PACKAGES.length} Packages`,    color:"amber" },
   ];
-  const catBorder: Record<string,string> = {
-    indigo:"border-indigo-200 hover:bg-indigo-600 hover:text-white hover:border-indigo-600",
-    emerald:"border-emerald-200 hover:bg-emerald-600 hover:text-white hover:border-emerald-600",
-    violet:"border-violet-200 hover:bg-violet-600 hover:text-white hover:border-violet-600",
-    rose:"border-rose-200 hover:bg-rose-600 hover:text-white hover:border-rose-600",
-    amber:"border-amber-200 hover:bg-amber-600 hover:text-white hover:border-amber-600",
-  };
+  // const catBorder: Record<string,string> = {
+  //   indigo:"border-indigo-200 hover:bg-indigo-600 hover:text-white hover:border-indigo-600",
+  //   emerald:"border-emerald-200 hover:bg-emerald-600 hover:text-white hover:border-emerald-600",
+  //   violet:"border-violet-200 hover:bg-violet-600 hover:text-white hover:border-violet-600",
+  //   rose:"border-rose-200 hover:bg-rose-600 hover:text-white hover:border-rose-600",
+  //   amber:"border-amber-200 hover:bg-amber-600 hover:text-white hover:border-amber-600",
+  // };
   const allSpecs = Array.from(new Set(DOCTORS.map(d => d.specialization))).sort();
   const mapCenter: [number, number] = position || [15.3647, 75.124];
 
@@ -2189,7 +2189,7 @@ export default function Map() {
                                 className="flex items-center gap-0.5 text-[10px] font-black text-slate-600 bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded-lg transition-all">
                                 <Phone size={9} />Call
                               </a>
-                              <button onClick={e => { e.stopPropagation(); openDirections(h.lat, h.lon, h.name); }}
+                              <button onClick={e => { e.stopPropagation(); openDirections(h.lat, h.lon); }}
                                 className="flex items-center gap-0.5 text-[10px] font-black text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded-lg transition-all">
                                 <Navigation size={9} />Go
                               </button>
@@ -2252,7 +2252,7 @@ export default function Map() {
                               {h.is24x7 && <Chip label="24/7" color="emerald" />}
                             </div>
                             <button onClick={() => setSelectedHospital(h)} className="w-full bg-indigo-600 text-white py-1.5 rounded-lg text-[11px] font-bold mb-1">View Details</button>
-                            <button onClick={() => openDirections(h.lat, h.lon, h.name)} className="w-full bg-slate-100 text-slate-700 py-1.5 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1"><Navigation size={10} />Directions</button>
+                            <button onClick={() => openDirections(h.lat, h.lon)} className="w-full bg-slate-100 text-slate-700 py-1.5 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1"><Navigation size={10} />Directions</button>
                           </div>
                         </Popup>
                       </Marker>
@@ -2263,7 +2263,7 @@ export default function Map() {
                           <div className="p-1 min-w-36">
                             <p className="font-bold text-slate-800 text-xs">{h.name.split(",")[0]}</p>
                             <p className="text-[10px] text-slate-400 mt-0.5">{h.distance.toFixed(2)} km · GPS Result</p>
-                            <button onClick={() => openDirections(h.lat, h.lon, h.name)} className="mt-2 w-full bg-indigo-600 text-white py-1.5 rounded-lg text-[11px] font-bold">Directions</button>
+                            <button onClick={() => openDirections(h.lat, h.lon)} className="mt-2 w-full bg-indigo-600 text-white py-1.5 rounded-lg text-[11px] font-bold">Directions</button>
                             <button onClick={() => requestBed(h)} disabled={bookingId === h.id} className="mt-1 w-full bg-emerald-600 text-white py-1.5 rounded-lg text-[11px] font-bold disabled:opacity-50 flex items-center justify-center gap-1"><BedDouble size={10} />{bookingId === h.id ? "Sending..." : "Request Bed"}</button>
                           </div>
                         </Popup>
@@ -2317,7 +2317,7 @@ export default function Map() {
                             {l.homeCollection && <p className="text-[9px] text-violet-600 font-black mb-1">🏠 Home Collection</p>}
                             <p className="text-xs font-black text-violet-700 mb-2">₹{l.startingPrice}+</p>
                             <a href={`tel:${l.phone}`} className="w-full block text-center bg-slate-100 text-slate-700 py-1.5 rounded-lg text-[11px] font-bold mb-1"><Phone size={10} className="inline mr-1" />Call</a>
-                            <button onClick={() => openDirections(l.lat, l.lon, l.name)} className="w-full bg-violet-600 text-white py-1.5 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1"><Navigation size={10} />Directions</button>
+                            <button onClick={() => openDirections(l.lat, l.lon)} className="w-full bg-violet-600 text-white py-1.5 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1"><Navigation size={10} />Directions</button>
                           </div>
                         </Popup>
                       </Marker>
@@ -2369,7 +2369,7 @@ export default function Map() {
                             </div>
                             <div className="flex gap-1 mb-2">{p.is24x7 && <Chip label="24/7" color="emerald" />}{p.delivery && <Chip label="Delivery" color="indigo" />}</div>
                             <a href={`tel:${p.phone}`} className="w-full block text-center bg-slate-100 text-slate-700 py-1.5 rounded-lg text-[11px] font-bold mb-1">Call</a>
-                            <button onClick={() => openDirections(p.lat, p.lon, p.name)} className="w-full bg-rose-500 text-white py-1.5 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1"><Navigation size={10} />Directions</button>
+                            <button onClick={() => openDirections(p.lat, p.lon)} className="w-full bg-rose-500 text-white py-1.5 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1"><Navigation size={10} />Directions</button>
                           </div>
                         </Popup>
                       </Marker>
