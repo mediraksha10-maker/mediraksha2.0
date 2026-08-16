@@ -1,0 +1,30 @@
+
+networks:
+  mediraksha-network:
+
+services:
+  database:
+    image: postgres:16
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USERNAME: postgres
+      POSTGRES_PASSWORD: <password>
+      POSTGRES_DB: appdb
+    volumes:
+      - medi_data:/etc/postgres/data
+
+  app:
+    image: ghcr.io/mediraksha10-maker/mediraksha-app:latest
+    ports:
+      - "8000:8000"
+    environment:
+      JWT_SECRET: 
+      DB_URL: postgres://postgres:<password>@localhost:5433/appdb
+      FRONTEND_URL: http://localhost:8080
+      GEOAPIFY_API_KEY:
+
+      
+volumes:
+  medi_data:
+  

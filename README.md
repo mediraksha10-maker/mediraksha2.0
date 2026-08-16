@@ -79,6 +79,14 @@ Mediraksha is built using modern, reliable, and high-performance technologies:
 
 ---
 
+## Getting started with docker-compose (pre-requisite docker & docker-compose)
+```
+git clone https://github.com/mediraksha10-maker/mediraksha2.0.git
+cd mediraksha2.0
+docker-compose -f app.yml up -d
+```
+
+---
 <p align="center">
   <b>Crafted with ❤️ by Team Mediraksha</b>
 </p>

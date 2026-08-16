@@ -222,13 +222,28 @@ export const getAvailableSlots = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Doctor not found' });
     }
 
-    const { rows: slots } = await pool.query(
-      `SELECT id, TO_CHAR("bookingDate", 'YYYY-MM-DD') AS "bookingDate", "slotTime", status, created_at
+    const now = new Date();
+  const currentDate = now.toISOString().split('T')[0];
+  const currentTime = now.toTimeString().slice(0, 5);
+
+  const isUsingToday = fromDate === currentDate;
+  const queryBase = `
+       SELECT id, TO_CHAR("bookingDate", 'YYYY-MM-DD') AS "bookingDate", "slotTime", status, created_at
        FROM "Slot"
-       WHERE "doctorId" = $1 AND status = 'available' AND "bookingDate" >= $2
-       ORDER BY "bookingDate" ASC, "slotTime" ASC`,
-      [doctorId, fromDate]
-    );
+       WHERE "doctorId" = $1 AND status = 'available' AND "bookingDate" >= $2`;
+
+  let query;
+  let queryParams;
+
+  if (isUsingToday) {
+    query = `${queryBase} AND ("bookingDate" > $2 OR ("bookingDate" = $2 AND "slotTime" > $3::time)) ORDER BY "bookingDate" ASC, "slotTime" ASC`;
+    queryParams = [doctorId, fromDate, currentTime];
+  } else {
+    query = `${queryBase} ORDER BY "bookingDate" ASC, "slotTime" ASC`;
+    queryParams = [doctorId, fromDate];
+  }
+
+  const { rows: slots } = await pool.query(query, queryParams);
 
     res.status(200).json({
       success: true,

@@ -2,7 +2,14 @@ import jwt from "jsonwebtoken";
 
 // Middleware to verify JWT
 const authVerify = (req, res, next) => {
-  const token = req.cookies.token;
+  const authHeader = req.headers.authorization || "";
+  let token = null;
+
+  if (authHeader.startsWith("Bearer ")) {
+    token = authHeader.slice(7);
+  } else if (req.cookies?.token) {
+    token = req.cookies.token;
+  }
 
   if (!token) {
     return res.status(401).json({

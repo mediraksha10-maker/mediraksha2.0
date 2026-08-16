@@ -104,7 +104,7 @@ const buildSlotRequests = ({ bookingDate, slotTime, startDate, endDate, weeklyRu
 // GET /api/doctor/slot/all
 export async function getAllSlots(req, res) {
   const doctorId = req.user.id;
-  const { status, fromDate } = req.query;
+  const { status, fromDate, toDate } = req.query;
 
   try {
     const params = [doctorId];
@@ -125,6 +125,15 @@ export async function getAllSlots(req, res) {
       }
       params.push(normalizedFromDate);
       conditions.push(`"bookingDate" >= $${params.length}`);
+    }
+
+    if (toDate) {
+      const normalizedToDate = normalizeDate(toDate);
+      if (!normalizedToDate) {
+        return res.status(400).json({ success: false, message: 'Invalid toDate.' });
+      }
+      params.push(normalizedToDate);
+      conditions.push(`"bookingDate" <= $${params.length}`);
     }
 
     const { rows } = await pool.query(
@@ -190,6 +199,62 @@ export async function addSlot(req, res) {
 }
 
 // DELETE /api/doctor/slot/:id
+export async function deleteSlotsByRange(req, res) {
+  const doctorId = req.user.id;
+  const { fromDate, toDate } = req.query;
+
+  if (!fromDate || !toDate) {
+    return res.status(400).json({ success: false, message: 'fromDate and toDate are required.' });
+  }
+
+  const normalizedFromDate = normalizeDate(fromDate);
+  const normalizedToDate = normalizeDate(toDate);
+
+  if (!normalizedFromDate || !normalizedToDate) {
+    return res.status(400).json({ success: false, message: 'Invalid date range.' });
+  }
+
+  if (new Date(`${normalizedToDate}T00:00:00Z`) < new Date(`${normalizedFromDate}T00:00:00Z`)) {
+    return res.status(400).json({ success: false, message: 'toDate cannot be earlier than fromDate.' });
+  }
+
+  try {
+    const { rows: bookedRows } = await pool.query(
+      `SELECT COUNT(*) AS "bookedCount"
+       FROM "Slot"
+       WHERE "doctorId" = $1
+         AND "bookingDate" >= $2
+         AND "bookingDate" <= $3
+         AND status = 'booked'`,
+      [doctorId, normalizedFromDate, normalizedToDate]
+    );
+
+    const bookedCount = Number(bookedRows[0]?.bookedCount || 0);
+
+    const { rows: deletedRows } = await pool.query(
+      `DELETE FROM "Slot"
+       WHERE "doctorId" = $1
+         AND "bookingDate" >= $2
+         AND "bookingDate" <= $3
+         AND status != 'booked'
+       RETURNING id`,
+      [doctorId, normalizedFromDate, normalizedToDate]
+    );
+
+    res.status(200).json({
+      success: true,
+      message: `Deleted ${deletedRows.length} slot${deletedRows.length === 1 ? '' : 's'} from the selected range.`,
+      deletedCount: deletedRows.length,
+      skippedBookedCount: bookedCount,
+      fromDate: normalizedFromDate,
+      toDate: normalizedToDate,
+    });
+  } catch (error) {
+    console.error('deleteSlotsByRange error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+}
+
 export async function deleteSlot(req, res) {
   const doctorId = req.user.id;
   const { id } = req.params;

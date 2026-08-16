@@ -12,11 +12,14 @@ import {
   completeMeeting,
   confirmMeeting,
   getAllMeetings, 
-  getMeetingReportById,
-  getMeetingReports,
   getMeetingById, 
   deleteMeeting 
 } from '../controllers/doctorMeetingController.js';
+
+import {
+  getDoctorAppointmentReportById,
+  getDoctorAppointmentReports
+} from '../controllers/appointmentReportController.js';
 
 import { 
   getAllPatients, 
@@ -27,7 +30,8 @@ import {
 import {
   getAllSlots,
   addSlot,
-  deleteSlot
+  deleteSlot,
+  deleteSlotsByRange
 } from '../controllers/doctorSlotController.js';
 
 import { getUserReport } from '../controllers/doctorReportController.js';
@@ -43,6 +47,7 @@ router.delete('/info/delete', deleteDoctorAccount);
 // Resolves to: /doctor/slot/all, /doctor/slot/:id, etc.
 router.get('/slot/all', getAllSlots);
 router.post('/slot/publish', addSlot);
+router.delete('/slot', deleteSlotsByRange);
 router.delete('/slot/:id', deleteSlot);
 
 
@@ -50,8 +55,8 @@ router.delete('/slot/:id', deleteSlot);
 // Resolves to: /doctor/meetings/all, /doctor/meetings/:id
 // Note: Hardcoded collection endpoints stay grouped safely above parameter routes
 router.get('/meetings/all', getAllMeetings);
-router.get('/meetings/:id/reports', getMeetingReports);
-router.get('/meetings/:id/reports/:reportId', getMeetingReportById);
+router.get('/meetings/:id/reports', getDoctorAppointmentReports);
+router.get('/meetings/:id/reports/:reportId', getDoctorAppointmentReportById);
 router.patch('/meetings/:id/confirm', confirmMeeting);
 router.patch('/meetings/:id/complete', completeMeeting);
 router.get('/meetings/:id', getMeetingById);

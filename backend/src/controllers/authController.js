@@ -53,12 +53,10 @@ export const signup = async (req, res) => {
     // Generate token
     const token = generateToken(user.id);
 
-    // Store in cookie
-    res.cookie("token", token, cookieOptions);
-
     res.status(201).json({
       success: true,
       message: "Signup successful",
+      token,
       user: {
         id: user.id,
         name: user.name,
@@ -109,12 +107,10 @@ export const login = async (req, res) => {
     // Generate token
     const token = generateToken(user.id);
 
-    // Store in cookie
-    res.cookie("token", token, cookieOptions);
-
     res.status(200).json({
       success: true,
       message: "Login successful",
+      token,
       user: {
         id: user.id,
         name: user.name,
@@ -165,12 +161,10 @@ export const doctorSignup = async (req, res) => {
     // Generate token
     const token = generateToken(doctor.id);
 
-    // Store in cookie
-    res.cookie("token", token, cookieOptions);
-
     res.status(201).json({
       success: true,
       message: "Doctor signup successful",
+      token,
       doctor: {
         id: doctor.id,
         name: doctor.name,
@@ -226,12 +220,10 @@ export const doctorLogin = async (req, res) => {
     // Generate token
     const token = generateToken(doctor.id);
 
-    // Store in cookie
-    res.cookie("token", token, cookieOptions);
-
     res.status(200).json({
       success: true,
       message: "Doctor login successful",
+      token,
       doctor: {
         id: doctor.id,
         name: doctor.name,

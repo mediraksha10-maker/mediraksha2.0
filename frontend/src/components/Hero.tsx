@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router";
 import {
-  Brain, MapPin, ArrowRight,
+  MapPin, ArrowRight,
   ChevronLeft, ChevronRight, Stethoscope, FileText
 } from "lucide-react";
 
@@ -51,36 +51,6 @@ const slides = [
     ),
   },
   {
-    id: 1,
-    label: "AI-Powered",
-    heading: "Symptoms decoded\nin seconds.",
-    sub: "Our LLM engine analyses your vitals and medical history to surface actionable insights instantly.",
-    cta: { label: "Try AI Scan", to: "/chat" },
-    accent: "#10b981",
-    bg: "from-slate-900 via-emerald-950 to-slate-900",
-    illustration: (
-      <svg viewBox="0 0 420 320" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
-        {/* brain outline */}
-        <ellipse cx="210" cy="150" rx="90" ry="80" fill="#064e3b" opacity="0.6"/>
-        <ellipse cx="210" cy="150" rx="90" ry="80" stroke="#10b981" strokeWidth="1.5" opacity="0.5"/>
-        {/* neural network lines */}
-        {[[140,100],[180,80],[240,75],[280,100],[310,140],[295,185],[260,210],[210,220],[160,210],[130,180],[120,140]].map(([x,y], i, arr) => {
-          const next = arr[(i+1) % arr.length];
-          return <line key={i} x1={x} y1={y} x2={next[0]} y2={next[1]} stroke="#10b981" strokeWidth="1" opacity="0.4"/>;
-        })}
-        {/* nodes */}
-        {[[140,100],[180,80],[240,75],[280,100],[310,140],[295,185],[260,210],[210,220],[160,210],[130,180],[120,140],[210,150]].map(([x,y],i) => (
-          <circle key={i} cx={x} cy={y} r={i===11?10:5} fill="#10b981" opacity={i===11?1:0.7}/>
-        ))}
-        {/* center pulse */}
-        <circle cx="210" cy="150" r="20" stroke="#34d399" strokeWidth="1.5" opacity="0.4"/>
-        <circle cx="210" cy="150" r="32" stroke="#34d399" strokeWidth="1"   opacity="0.2"/>
-        {/* ECG line */}
-        <polyline points="60,270 90,270 105,240 120,300 135,255 150,270 420,270" stroke="#10b981" strokeWidth="2" fill="none" opacity="0.7"/>
-      </svg>
-    ),
-  },
-  {
     id: 2,
     label: "Health Records",
     heading: "Your entire health\nhistory, one tap away.",
@@ -123,16 +93,6 @@ const services = [
     bg: "bg-indigo-50",
     border: "border-indigo-100",
     hover: "group-hover:bg-indigo-600",
-  },
-  {
-    icon: <Brain size={26} />,
-    title: "AI Medical Assistant",
-    desc: "Get instant health insights and symptom analysis powered by AI.",
-    to: "/chat",
-    color: "text-emerald-600",
-    bg: "bg-emerald-50",
-    border: "border-emerald-100",
-    hover: "group-hover:bg-emerald-600",
   },
   {
     icon: <FileText size={26} />,

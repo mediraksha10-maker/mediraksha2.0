@@ -148,6 +148,7 @@ export default function DoctorProfile() {
   };
 
   const handleLogout = async (): Promise<void> => {
+    localStorage.removeItem("token");
     try {
       await api.post("/auth/logout");
     } catch (_) {
