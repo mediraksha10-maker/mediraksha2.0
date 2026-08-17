@@ -4,10 +4,11 @@ import {
   Calendar, Building2, User, Link2, Plus, X, Search, Download,
   Eye, EyeOff, Clock, Pencil, ExternalLink, Star, Archive,
   FileImage, FileArchive, Pin, Hash,
-  AlertCircle, FolderOpen, Check
+  AlertCircle, FolderOpen, Check, ShieldAlert
 } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router';
 import api from '../api/Api';
+import DateField from '../components/DateField';
 
 /* ─── Types ─── */
 interface RecordTag { id: number; name: string; color: string; }
@@ -25,6 +26,7 @@ interface Report {
   visitDate: string | null;
   notes: string | null;
   visibility: string;
+  emergencyAccess: boolean;
   originalFileName: string | null;
   mimeType: string | null;
   fileSize: number | null;
@@ -74,11 +76,18 @@ const TAG_COLOR_MAP: Record<string, { bg: string; text: string; border: string; 
 };
 const DEFAULT_TAG_C = { bg: 'bg-slate-100', text: 'text-slate-600', border: 'border-slate-300', dot: 'bg-slate-400' };
 
-const VIS_META: Record<string, { label: string; cls: string }> = {
-  private:   { label: 'Private',          cls: 'bg-slate-100 text-slate-600 border-slate-300' },
-  shared:    { label: 'Shared',           cls: 'bg-blue-50 text-blue-700 border-blue-200'     },
-  emergency: { label: 'Emergency Access', cls: 'bg-rose-50 text-rose-700 border-rose-200'     },
-};
+/** Segmented-toggle option sets for the two binary record settings below.
+ *  A segmented control (not a dropdown) avoids the "styled <select>" problem
+ *  entirely — no option list to color, just two always-visible states. */
+const VIS_OPTIONS = [
+  { value: 'private', label: 'Private', icon: <EyeOff size={12} />, sub: 'Only you can see this record.' },
+  { value: 'shared', label: 'Shared', icon: <Eye size={12} />, sub: 'Visible to doctors you consult.' },
+];
+
+const EMERGENCY_OPTIONS = [
+  { value: 'no', label: 'No', icon: <AlertCircle size={12} />, sub: 'Hidden from hospitals during an emergency.' },
+  { value: 'yes', label: 'Yes', icon: <ShieldAlert size={12} />, sub: 'Visible to the hospital treating you in an emergency.' },
+];
 
 const CATEGORY_META: Record<string, { label: string; color: string; bg: string; border: string; icon: React.ReactNode }> = {
   prescription: { label: 'Prescription',     color: 'text-indigo-700',  bg: 'bg-indigo-50',  border: 'border-indigo-200', icon: <Stethoscope size={14} /> },
@@ -298,6 +307,15 @@ export default function RecordDetail() {
   const [savingNotes, setSavingNotes] = useState(false);
   const [notesError, setNotesError] = useState('');
 
+  /* doctor / visit details editing */
+  const [editingDetails, setEditingDetails] = useState(false);
+  const [edDoctor, setEdDoctor] = useState('');
+  const [edSpec, setEdSpec] = useState('');
+  const [edHospital, setEdHospital] = useState('');
+  const [edDate, setEdDate] = useState('');
+  const [savingDetails, setSavingDetails] = useState(false);
+  const [detailsError, setDetailsError] = useState('');
+
   /* collections dropdown */
   const [showAddToCol, setShowAddToCol] = useState(false);
 
@@ -506,6 +524,41 @@ export default function RecordDetail() {
     } catch {}
   };
 
+  const handleChangeEmergencyAccess = async (emergencyAccess: boolean) => {
+    if (!id) return;
+    try {
+      await api.patch(`/user/records/${id}`, { emergencyAccess });
+      setRecord(prev => prev ? { ...prev, emergencyAccess } : prev);
+    } catch {}
+  };
+
+  /* ─── Doctor / visit details handlers ─── */
+  const startEditDetails = () => {
+    setEdDoctor(record?.doctorName || '');
+    setEdSpec(record?.specialization || '');
+    setEdHospital(record?.hospital || '');
+    setEdDate(record?.visitDate ? record.visitDate.slice(0, 10) : '');
+    setDetailsError('');
+    setEditingDetails(true);
+  };
+
+  const handleSaveDetails = async () => {
+    if (!id) return;
+    setSavingDetails(true);
+    setDetailsError('');
+    try {
+      await api.patch(`/user/records/${id}`, {
+        doctorName: edDoctor, specialization: edSpec, hospital: edHospital, visitDate: edDate,
+      });
+      setRecord(prev => prev ? { ...prev, doctorName: edDoctor || null, specialization: edSpec || null, hospital: edHospital || null, visitDate: edDate || null } : prev);
+      setEditingDetails(false);
+    } catch (e: any) {
+      if (e.response?.status === 401) navigate('/auth');
+      else setDetailsError(e.response?.data?.message || 'Failed to save details. Please try again.');
+    }
+    finally { setSavingDetails(false); }
+  };
+
   /* ─── Notes handlers ─── */
   const startEditNotes = () => {
     setNotesValue(record?.notes || '');
@@ -556,7 +609,6 @@ export default function RecordDetail() {
   }
 
   const m = fmt(record.category);
-  const vis = VIS_META[record.visibility] || VIS_META.private;
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -664,25 +716,82 @@ export default function RecordDetail() {
 
             {/* Metadata Card */}
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm px-7 py-6">
-              <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-5">Details</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                {[
-                  { label: 'Doctor', value: record.doctorName ? `Dr. ${record.doctorName}` : null, icon: <User size={15} className="text-indigo-500" /> },
-                  { label: 'Specialization', value: record.specialization, icon: <Stethoscope size={15} className="text-slate-400" /> },
-                  { label: 'Hospital / Clinic', value: record.hospital, icon: <Building2 size={15} className="text-slate-400" /> },
-                  { label: 'Visit Date', value: record.visitDate ? visitFmt(record.visitDate) : null, icon: <Calendar size={15} className="text-slate-400" /> },
-                ].map(f => (
-                  <div key={f.label}>
-                    <div className="flex items-center gap-1.5 mb-1">
-                      {f.icon}
-                      <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">{f.label}</span>
-                    </div>
-                    <p className={`text-sm font-medium ${f.value ? 'text-slate-800' : 'text-slate-300 italic'}`}>
-                      {f.value || 'Not specified'}
-                    </p>
-                  </div>
-                ))}
+              <div className="flex items-center justify-between mb-5">
+                <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Details</h2>
+                {!editingDetails && (
+                  <button
+                    onClick={startEditDetails}
+                    className="flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 px-2 py-1 rounded-lg transition-colors"
+                  >
+                    <Pencil size={11} /> Edit
+                  </button>
+                )}
               </div>
+              {editingDetails ? (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1.5">Doctor Name</label>
+                      <input type="text" value={edDoctor} onChange={e => setEdDoctor(e.target.value)} placeholder="Dr. Rajesh Kumar"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1.5">Specialization</label>
+                      <input type="text" value={edSpec} onChange={e => setEdSpec(e.target.value)} placeholder="Cardiology"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1.5">Hospital / Clinic</label>
+                      <input type="text" value={edHospital} onChange={e => setEdHospital(e.target.value)} placeholder="Apollo Hospital"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1.5">Visit Date</label>
+                      <DateField value={edDate} onChange={setEdDate} />
+                    </div>
+                  </div>
+                  {detailsError && <p className="text-xs text-rose-600 bg-rose-50 border border-rose-200 px-3 py-2 rounded-lg font-medium">{detailsError}</p>}
+                  <div className="flex items-center gap-2 justify-end">
+                    <button
+                      onClick={() => setEditingDetails(false)}
+                      className="text-xs font-semibold text-slate-500 hover:bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleSaveDetails}
+                      disabled={savingDetails}
+                      className="flex items-center gap-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      {savingDetails
+                        ? <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        : <Check size={12} />}
+                      Save
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  {[
+                    { label: 'Doctor', value: record.doctorName ? `Dr. ${record.doctorName}` : null, icon: <User size={15} className="text-indigo-500" /> },
+                    { label: 'Specialization', value: record.specialization, icon: <Stethoscope size={15} className="text-slate-400" /> },
+                    { label: 'Hospital / Clinic', value: record.hospital, icon: <Building2 size={15} className="text-slate-400" /> },
+                    { label: 'Visit Date', value: record.visitDate ? visitFmt(record.visitDate) : null, icon: <Calendar size={15} className="text-slate-400" /> },
+                  ].map(f => (
+                    <div key={f.label}>
+                      <div className="flex items-center gap-1.5 mb-1">
+                        {f.icon}
+                        <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">{f.label}</span>
+                      </div>
+                      <p className={`text-sm font-medium ${f.value ? 'text-slate-800' : 'text-slate-300 italic'}`}>
+                        {f.value || 'Not specified'}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className="border-t border-slate-50 mt-5 pt-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <div className="flex items-center gap-1.5 mb-1">
@@ -859,18 +968,18 @@ export default function RecordDetail() {
                   <FolderOpen size={16} className="text-indigo-600" />
                   <h2 className="font-bold text-slate-800 text-sm">Collections</h2>
                 </div>
-                {availableCols.length > 0 && (
-                  <div className="relative">
-                    <button
-                      onClick={() => setShowAddToCol(v => !v)}
-                      className="flex items-center gap-1 text-xs font-bold text-indigo-600 hover:bg-indigo-50 px-2.5 py-1.5 rounded-lg transition-colors"
-                    >
-                      <Plus size={13} /> Add
-                    </button>
-                    {showAddToCol && (
-                      <div className="absolute right-0 top-full mt-1 w-56 bg-white border border-slate-200 rounded-xl shadow-lg z-20 py-1 overflow-hidden">
-                        <p className="text-[10px] font-semibold text-slate-400 uppercase px-3 pt-2 pb-1">Add to collection</p>
-                        {availableCols.map(c => (
+                <div className="relative">
+                  <button
+                    onClick={() => setShowAddToCol(v => !v)}
+                    className="flex items-center gap-1 text-xs font-bold text-indigo-600 hover:bg-indigo-50 px-2.5 py-1.5 rounded-lg transition-colors"
+                  >
+                    <Plus size={13} /> Add
+                  </button>
+                  {showAddToCol && (
+                    <div className="absolute right-0 top-full mt-1 w-60 bg-white border border-slate-200 rounded-xl shadow-lg z-20 py-1 overflow-hidden">
+                      <p className="text-[10px] font-semibold text-slate-400 uppercase px-3 pt-2 pb-1">Add to collection</p>
+                      {availableCols.length > 0 ? (
+                        availableCols.map(c => (
                           <button
                             key={c.id}
                             onClick={() => handleAddToCollection(c.id)}
@@ -882,11 +991,24 @@ export default function RecordDetail() {
                               <span className="text-xs text-slate-400 shrink-0">{c.recordCount}</span>
                             )}
                           </button>
-                        ))}
+                        ))
+                      ) : (
+                        <p className="px-3 py-3 text-xs text-slate-400">
+                          {allCollections.length === 0 ? 'No collections created yet.' : 'Already added to every collection.'}
+                        </p>
+                      )}
+                      <div className="border-t border-slate-100 mt-1 pt-1">
+                        <button
+                          onClick={() => navigate(`/records?tab=collections&createFor=${id}`)}
+                          className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-indigo-50 text-left text-indigo-600"
+                        >
+                          <Plus size={13} className="shrink-0" />
+                          <span className="text-sm font-semibold">Create new collection</span>
+                        </button>
                       </div>
-                    )}
-                  </div>
-                )}
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="p-5">
                 {record.collections.length === 0 ? (
@@ -937,26 +1059,51 @@ export default function RecordDetail() {
                   </span>
                 </div>
 
-                {/* Visibility */}
-                <div className="pt-1 border-t border-slate-50">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs text-slate-400">Visibility</span>
-                    <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full border ${vis.cls}`}>
-                      {record.visibility === 'private' && <EyeOff size={10} />}
-                      {record.visibility === 'shared' && <Eye size={10} />}
-                      {record.visibility === 'emergency' && <AlertCircle size={10} />}
-                      {vis.label}
-                    </span>
+                {/* Access */}
+                <div className="pt-3 border-t border-slate-50">
+                  <span className="text-xs text-slate-400 block mb-2">Access</span>
+                  <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-xl">
+                    {VIS_OPTIONS.map(o => {
+                      const active = record.visibility === o.value;
+                      return (
+                        <button
+                          key={o.value}
+                          type="button"
+                          onClick={() => handleChangeVisibility(o.value)}
+                          className={`flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-bold transition-all ${active ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                        >
+                          {o.icon} {o.label}
+                        </button>
+                      );
+                    })}
                   </div>
-                  <select
-                    value={record.visibility}
-                    onChange={e => handleChangeVisibility(e.target.value)}
-                    className="w-full text-xs font-medium text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer"
-                  >
-                    <option value="private">Private</option>
-                    <option value="shared">Shared with Doctor</option>
-                    <option value="emergency">Emergency Access</option>
-                  </select>
+                  <p className="text-[11px] text-slate-400 mt-1.5 px-0.5">
+                    {VIS_OPTIONS.find(o => o.value === record.visibility)?.sub}
+                  </p>
+                </div>
+
+                {/* Emergency Access */}
+                <div className="pt-3 border-t border-slate-50">
+                  <span className="text-xs text-slate-400 block mb-2">Emergency Access</span>
+                  <div className={`grid grid-cols-2 gap-1 p-1 rounded-xl transition-colors ${record.emergencyAccess ? 'bg-rose-50' : 'bg-slate-100'}`}>
+                    {EMERGENCY_OPTIONS.map(o => {
+                      const active = (record.emergencyAccess ? 'yes' : 'no') === o.value;
+                      const isYes = o.value === 'yes';
+                      return (
+                        <button
+                          key={o.value}
+                          type="button"
+                          onClick={() => handleChangeEmergencyAccess(o.value === 'yes')}
+                          className={`flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-bold transition-all ${active ? (isYes ? 'bg-white text-rose-600 shadow-sm' : 'bg-white text-slate-700 shadow-sm') : 'text-slate-400 hover:text-slate-600'}`}
+                        >
+                          {o.icon} {o.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-1.5 px-0.5">
+                    {EMERGENCY_OPTIONS.find(o => o.value === (record.emergencyAccess ? 'yes' : 'no'))?.sub}
+                  </p>
                 </div>
               </div>
             </div>

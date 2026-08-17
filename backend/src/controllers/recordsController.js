@@ -2,7 +2,8 @@ import { pool } from '../config/db.js';
 
 const PREFIX_MAP = { prescription: 'PRES', lab: 'LAB', scan: 'IMG', discharge: 'DIS', other: 'REC' };
 const TAG_COLORS = ['indigo', 'emerald', 'violet', 'amber', 'rose', 'sky', 'teal', 'orange', 'pink', 'lime'];
-const ALLOWED_VIS = new Set(['private', 'shared', 'emergency']);
+const ALLOWED_VIS = new Set(['private', 'shared']);
+const toBool = (v) => v === true || v === 'true' || v === '1' || v === 1;
 
 const generateRecordId = async (category) => {
   const result = await pool.query(`SELECT COUNT(*) as cnt FROM "Report" WHERE "category" = $1`, [category]);
@@ -14,6 +15,7 @@ const generateRecordId = async (category) => {
 const RECORD_COLUMNS = `
   r."id", r."recordId", r."userId", r."title", r."category", r."doctorName",
   r."specialization", r."hospital", r."visitDate", r."notes", r."visibility",
+  r."emergencyAccess",
   r."originalFileName", r."mimeType", r."fileSize", r."created_at", r."updated_at",
   r."isImportant", r."isArchived", r."isPinned",
   COALESCE(
@@ -101,7 +103,7 @@ export const getRecordById = async (req, res) => {
 export const createRecord = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { title, category = 'other', doctorName, specialization, hospital, visitDate, notes, visibility = 'private', doctorId } = req.body;
+    const { title, category = 'other', doctorName, specialization, hospital, visitDate, notes, visibility = 'private', emergencyAccess, doctorId } = req.body;
     let tags = [];
     try { tags = req.body.tags ? JSON.parse(req.body.tags) : []; } catch {}
 
@@ -111,6 +113,7 @@ export const createRecord = async (req, res) => {
     if (!ALLOWED_CAT.has(category)) return res.status(400).json({ success: false, message: 'Invalid category.' });
 
     const finalVis = ALLOWED_VIS.has(visibility) ? visibility : 'private';
+    const finalEmergency = toBool(emergencyAccess);
 
     let fileData = null, mimeType = null, originalFileName = null, fileSize = null;
     if (req.file) {
@@ -125,14 +128,14 @@ export const createRecord = async (req, res) => {
     const result = await pool.query(
       `INSERT INTO "Report" (
         "userId","recordId","title","category","doctorName","specialization",
-        "hospital","visitDate","notes","visibility","doctorId",
+        "hospital","visitDate","notes","visibility","emergencyAccess","doctorId",
         "fileData","mimeType","originalFileName","fileSize","uploadedBy",
         "isImportant","isArchived","isPinned","created_at","updated_at"
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,FALSE,FALSE,FALSE,NOW(),NOW())
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,FALSE,FALSE,FALSE,NOW(),NOW())
       RETURNING "id","recordId"`,
       [userId, recordId, title.trim(), category,
         doctorName || null, specialization || null, hospital || null,
-        visitDate || null, notes || null, finalVis,
+        visitDate || null, notes || null, finalVis, finalEmergency,
         doctorId || null, fileData, mimeType, originalFileName, fileSize, 'user']
     );
 
@@ -172,6 +175,7 @@ export const updateRecord = async (req, res) => {
     if ('visitDate' in body) set('visitDate', body.visitDate || null);
     if ('notes' in body) set('notes', body.notes || null);
     if ('visibility' in body && ALLOWED_VIS.has(body.visibility)) set('visibility', body.visibility);
+    if ('emergencyAccess' in body) set('emergencyAccess', toBool(body.emergencyAccess));
 
     if (fields.length === 0) return res.status(400).json({ success: false, message: 'No fields to update.' });
 
@@ -181,7 +185,7 @@ export const updateRecord = async (req, res) => {
       `UPDATE "Report" SET ${fields.join(', ')}
        WHERE "id" = $1 AND "userId" = $2
        RETURNING "id","recordId","title","category","doctorName","specialization",
-                 "hospital","visitDate","notes","visibility","originalFileName",
+                 "hospital","visitDate","notes","visibility","emergencyAccess","originalFileName",
                  "mimeType","fileSize","created_at","updated_at","isImportant","isArchived","isPinned"`,
       params
     );
@@ -281,13 +285,13 @@ export const duplicateRecord = async (req, res) => {
     const result = await pool.query(
       `INSERT INTO "Report" (
         "userId","recordId","title","category","doctorName","specialization",
-        "hospital","visitDate","notes","visibility",
+        "hospital","visitDate","notes","visibility","emergencyAccess",
         "fileData","mimeType","originalFileName","fileSize","uploadedBy",
         "isImportant","isArchived","isPinned","created_at","updated_at"
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'user',FALSE,FALSE,FALSE,NOW(),NOW())
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'user',FALSE,FALSE,FALSE,NOW(),NOW())
       RETURNING "id","recordId"`,
       [userId, newRecordId, `${s.title} (Copy)`, s.category, s.doctorName, s.specialization,
-        s.hospital, s.visitDate, s.notes, s.visibility,
+        s.hospital, s.visitDate, s.notes, s.visibility, s.emergencyAccess || false,
         s.fileData, s.mimeType, s.originalFileName, s.fileSize]
     );
 

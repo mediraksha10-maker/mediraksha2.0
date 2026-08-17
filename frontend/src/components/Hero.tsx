@@ -55,7 +55,7 @@ const slides = [
     label: "Health Records",
     heading: "Your entire health\nhistory, one tap away.",
     sub: "Encrypted, structured, and always accessible. Share records with any doctor in seconds.",
-    cta: { label: "View Records", to: "/hospital" },
+    cta: { label: "View Records", to: "/records" },
     accent: "#f59e0b",
     bg: "from-slate-900 via-amber-950 to-slate-900",
     illustration: (

@@ -180,6 +180,9 @@ ALTER TABLE "Report" ADD COLUMN IF NOT EXISTS "notes" TEXT;
 ALTER TABLE "Report" ADD COLUMN IF NOT EXISTS "isImportant" BOOLEAN DEFAULT FALSE;
 ALTER TABLE "Report" ADD COLUMN IF NOT EXISTS "isArchived" BOOLEAN DEFAULT FALSE;
 ALTER TABLE "Report" ADD COLUMN IF NOT EXISTS "isPinned" BOOLEAN DEFAULT FALSE;
+-- "visibility" is now private/shared only; emergency access is its own flag
+-- so a report can be shared-with-doctor AND emergency-accessible independently.
+ALTER TABLE "Report" ADD COLUMN IF NOT EXISTS "emergencyAccess" BOOLEAN DEFAULT FALSE;
 
 CREATE TABLE IF NOT EXISTS "Hospital" (
     "id" SERIAL PRIMARY KEY,

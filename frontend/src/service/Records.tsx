@@ -8,8 +8,9 @@ import {
   CalendarDays, Pin, Tag, Hash,
   Layers
 } from 'lucide-react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import api from '../api/Api';
+import DateField from '../components/DateField';
 
 /* ─── Types ─── */
 interface Tag { id: number; name: string; color: string; usageCount?: number; }
@@ -29,7 +30,7 @@ interface Report {
   id: number; recordId: string; title: string;
   category: 'prescription' | 'lab' | 'scan' | 'discharge' | 'other';
   doctorName: string | null; specialization: string | null; hospital: string | null;
-  visitDate: string | null; notes: string | null; visibility: string;
+  visitDate: string | null; notes: string | null; visibility: string; emergencyAccess: boolean;
   originalFileName: string | null; mimeType: string | null; fileSize: number | null;
   created_at: string; updated_at: string; connectionCount: number;
   isImportant: boolean; isArchived: boolean; isPinned: boolean;
@@ -37,6 +38,28 @@ interface Report {
 }
 
 interface PatientSummary { bloodGroup: string | null; knownConditions: string | null; allergies: string | null; emergencyContact: string | null; healthRemarks: string | null; }
+
+const BLOOD_GROUPS = ['O+', 'O-', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-'];
+
+/** Emergency contact is stored as one string ("Name — +91 98765 43210") so no schema change
+ *  is needed, but the UI edits/displays it as separate name + phone fields. */
+const parseEmergencyContact = (raw: string | null): { name: string; phone: string } => {
+  if (!raw) return { name: '', phone: '' };
+  const digits = raw.replace(/\D/g, '');
+  const phone = digits.length >= 10 ? digits.slice(-10) : digits;
+  const sepIdx = raw.search(/[-–—:]/);
+  const name = (sepIdx !== -1 ? raw.slice(0, sepIdx) : raw.replace(/[\d+()\-–—\s]{6,}/g, '')).trim();
+  return { name, phone };
+};
+
+const formatEmergencyContact = (name: string, phone: string): string => {
+  const cleanPhone = phone.replace(/\D/g, '').slice(0, 10);
+  const formattedPhone = cleanPhone.length === 10 ? `${cleanPhone.slice(0, 5)} ${cleanPhone.slice(5)}` : cleanPhone;
+  if (!name.trim() && !formattedPhone) return '';
+  if (!formattedPhone) return name.trim();
+  if (!name.trim()) return `+91 ${formattedPhone}`;
+  return `${name.trim()} — +91 ${formattedPhone}`;
+};
 
 type Tab = 'overview' | 'prescriptions' | 'lab' | 'scans' | 'collections' | 'timeline';
 type CategoryType = 'prescription' | 'lab' | 'scan' | 'discharge' | 'other';
@@ -249,6 +272,7 @@ function ContextMenu({ menu, onClose, onView, onToggleImportant, onToggleArchive
 /* ─── Main Component ─── */
 export default function Records() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [records, setRecords] = useState<Report[]>([]);
@@ -259,6 +283,7 @@ export default function Records() {
 
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [viewMode, setViewMode] = useState<ViewMode>(() => (localStorage.getItem('recordsView') as ViewMode) || 'list');
+  const [timelineGroupMode, setTimelineGroupMode] = useState<'month' | 'year'>('month');
 
   const [searchQ, setSearchQ] = useState('');
   const [showFilters, setShowFilters] = useState(false);
@@ -284,7 +309,8 @@ export default function Records() {
   const [fHospital, setFHospital] = useState('');
   const [fDate, setFDate] = useState('');
   const [fNotes, setFNotes] = useState('');
-  const [fVisibility, setFVisibility] = useState<'private' | 'shared' | 'emergency'>('private');
+  const [fVisibility, setFVisibility] = useState<'private' | 'shared'>('private');
+  const [fEmergencyAccess, setFEmergencyAccess] = useState(false);
   const [fTags, setFTags] = useState<string[]>([]);
   const [fFile, setFFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -297,7 +323,8 @@ export default function Records() {
   const [sBlood, setSBlood] = useState('');
   const [sConditions, setSConditions] = useState('');
   const [sAllergies, setSAllergies] = useState('');
-  const [sEmergency, setSEmergency] = useState('');
+  const [sEmergencyName, setSEmergencyName] = useState('');
+  const [sEmergencyPhone, setSEmergencyPhone] = useState('');
   const [sRemarks, setSRemarks] = useState('');
   const [isSavingSummary, setIsSavingSummary] = useState(false);
   const [summaryError, setSummaryError] = useState('');
@@ -340,6 +367,14 @@ export default function Records() {
       } finally { setLoading(false); }
     })();
   }, [navigate]);
+
+  /* Arriving from "Create a collection" on a record's detail page */
+  useEffect(() => {
+    if (searchParams.get('tab') === 'collections') {
+      setActiveTab('collections');
+      if (searchParams.get('createFor')) setShowNewCol(true);
+    }
+  }, [searchParams]);
 
   const setView = (v: ViewMode) => { setViewMode(v); localStorage.setItem('recordsView', v); };
 
@@ -384,7 +419,7 @@ export default function Records() {
     if (defaultCat) { setSelCategory(defaultCat); setAddStep(2); setDirectStep2(true); }
     else { setAddStep(1); setDirectStep2(false); }
     setFTitle(''); setFDoctor(''); setFSpec(''); setFHospital('');
-    setFDate(''); setFNotes(''); setFVisibility('private'); setFTags([]); setFFile(null);
+    setFDate(''); setFNotes(''); setFVisibility('private'); setFEmergencyAccess(false); setFTags([]); setFFile(null);
     setAddError(''); setUploadProgress(0); setSaveSuccess(null); setShowAdd(true);
   };
 
@@ -404,6 +439,7 @@ export default function Records() {
       fd.append('doctorName', fDoctor); fd.append('specialization', fSpec);
       fd.append('hospital', fHospital); fd.append('visitDate', fDate);
       fd.append('notes', fNotes); fd.append('visibility', fVisibility);
+      fd.append('emergencyAccess', String(fEmergencyAccess));
       if (fTags.length) fd.append('tags', JSON.stringify(fTags));
       if (fFile) fd.append('file', fFile);
 
@@ -466,7 +502,9 @@ export default function Records() {
 
   const openSummaryEdit = () => {
     setSBlood(summary?.bloodGroup || ''); setSConditions(summary?.knownConditions || '');
-    setSAllergies(summary?.allergies || ''); setSEmergency(summary?.emergencyContact || '');
+    setSAllergies(summary?.allergies || '');
+    const parsed = parseEmergencyContact(summary?.emergencyContact || null);
+    setSEmergencyName(parsed.name); setSEmergencyPhone(parsed.phone);
     setSRemarks(summary?.healthRemarks || '');
     setSummaryError('');
     setShowSummaryEdit(true);
@@ -476,7 +514,8 @@ export default function Records() {
     setIsSavingSummary(true);
     setSummaryError('');
     try {
-      const res = await api.post('/user/records/summary', { bloodGroup: sBlood, knownConditions: sConditions, allergies: sAllergies, emergencyContact: sEmergency, healthRemarks: sRemarks });
+      const emergencyContact = formatEmergencyContact(sEmergencyName, sEmergencyPhone);
+      const res = await api.post('/user/records/summary', { bloodGroup: sBlood, knownConditions: sConditions, allergies: sAllergies, emergencyContact, healthRemarks: sRemarks });
       if (res.data?.success) { setSummary(res.data.data); setShowSummaryEdit(false); }
       else setSummaryError('Failed to save. Please try again.');
     } catch (e: any) {
@@ -493,7 +532,13 @@ export default function Records() {
       if (res.data?.success) {
         setCollections(prev => [{ ...res.data.data, prescriptionCount: 0, labCount: 0, scanCount: 0, importantCount: 0, recentRecords: [] }, ...prev]);
         setNewColName(''); setNewColDesc(''); setShowNewCol(false);
-        navigate(`/collections/${res.data.data.id}`);
+        const createFor = searchParams.get('createFor');
+        if (createFor) {
+          try { await api.post(`/user/collections/${res.data.data.id}/records/${createFor}`); } catch {}
+          navigate(`/records/${createFor}`);
+        } else {
+          navigate(`/collections/${res.data.data.id}`);
+        }
       }
     } catch {}
   };
@@ -694,22 +739,24 @@ export default function Records() {
   /* ─── Timeline ─── */
   const TimelineView = () => {
     if (!timelineRecords.length) return <EmptyState label="records" onAdd={() => openAdd()} />;
-    let lastYear = '';
+    let lastGroup = '';
     return (
       <div className="relative pl-8">
         <div className="absolute left-3 top-0 bottom-0 w-0.5 bg-slate-200 rounded-full" />
         {timelineRecords.map(r => {
           const date = r.visitDate ? new Date(r.visitDate) : new Date(r.created_at);
-          const year = date.getFullYear().toString();
-          const showYear = year !== lastYear;
-          lastYear = year;
+          const groupKey = timelineGroupMode === 'year'
+            ? date.getFullYear().toString()
+            : date.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+          const showGroup = groupKey !== lastGroup;
+          lastGroup = groupKey;
           const m = fmt(r.category);
           return (
             <div key={r.id}>
-              {showYear && (
+              {showGroup && (
                 <div className="relative flex items-center gap-3 mb-4 mt-6 first:mt-0">
                   <div className="absolute -left-8 w-6 h-6 rounded-full bg-slate-700 flex items-center justify-center"><CalendarDays size={12} className="text-white" /></div>
-                  <span className="text-xs font-black text-slate-500 uppercase tracking-widest pl-1">{year}</span>
+                  <span className="text-xs font-black text-slate-500 uppercase tracking-widest pl-1">{groupKey}</span>
                 </div>
               )}
               <div className="relative flex items-start gap-4 mb-4 group">
@@ -1038,18 +1085,45 @@ export default function Records() {
                   <button onClick={openSummaryEdit} className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 px-2.5 py-1.5 rounded-lg transition-colors"><Pencil size={12} /> Edit</button>
                 </div>
                 <div className="p-6 space-y-4">
+                  <div>
+                    <div className="flex items-center gap-1.5 mb-1"><Droplets size={14} className="text-rose-500" /><span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Blood Group</span></div>
+                    {summary?.bloodGroup ? (
+                      <span className="inline-flex items-center justify-center min-w-9 px-2.5 py-1 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-sm font-black">{summary.bloodGroup}</span>
+                    ) : (
+                      <p className="text-sm font-medium text-slate-300 italic">Not specified</p>
+                    )}
+                  </div>
                   {[
-                    { label: 'Blood Group', value: summary?.bloodGroup, icon: <Droplets size={14} className="text-rose-500" /> },
                     { label: 'Known Conditions', value: summary?.knownConditions, icon: <AlertCircle size={14} className="text-amber-500" /> },
                     { label: 'Allergies', value: summary?.allergies, icon: <AlertCircle size={14} className="text-orange-500" /> },
-                    { label: 'Emergency Contact', value: summary?.emergencyContact, icon: <Phone size={14} className="text-emerald-500" /> },
-                    { label: 'Health Remarks', value: summary?.healthRemarks, icon: <ClipboardList size={14} className="text-indigo-400" /> },
                   ].map(f => (
                     <div key={f.label}>
                       <div className="flex items-center gap-1.5 mb-1">{f.icon}<span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">{f.label}</span></div>
                       <p className={`text-sm font-medium ${f.value ? 'text-slate-800' : 'text-slate-300 italic'}`}>{f.value || 'Not specified'}</p>
                     </div>
                   ))}
+                  <div>
+                    <div className="flex items-center gap-1.5 mb-1"><Phone size={14} className="text-emerald-500" /><span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Emergency Contact</span></div>
+                    {summary?.emergencyContact ? (() => {
+                      const { name, phone } = parseEmergencyContact(summary.emergencyContact);
+                      return (
+                        <div className="flex items-center flex-wrap gap-2">
+                          <span className="text-sm font-medium text-slate-800 truncate">{name || 'Emergency contact'}</span>
+                          {phone.length === 10 && (
+                            <a href={`tel:+91${phone}`} onClick={e => e.stopPropagation()} className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-1 rounded-lg hover:bg-emerald-100 transition-colors shrink-0">
+                              <Phone size={11} /> {phone.slice(0, 5)} {phone.slice(5)}
+                            </a>
+                          )}
+                        </div>
+                      );
+                    })() : (
+                      <p className="text-sm font-medium text-slate-300 italic">Not specified</p>
+                    )}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1.5 mb-1"><ClipboardList size={14} className="text-indigo-400" /><span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Health Remarks</span></div>
+                    <p className={`text-sm font-medium ${summary?.healthRemarks ? 'text-slate-800' : 'text-slate-300 italic'}`}>{summary?.healthRemarks || 'Not specified'}</p>
+                  </div>
                   {!summary && <button onClick={openSummaryEdit} className="w-full mt-2 border-2 border-dashed border-slate-200 rounded-xl py-3 text-sm text-slate-400 hover:border-indigo-400 hover:text-indigo-500 transition-colors font-medium">+ Add your health summary</button>}
                 </div>
               </div>
@@ -1143,7 +1217,17 @@ export default function Records() {
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
               <div className="flex items-center gap-2"><div className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center text-slate-600"><Clock size={16} /></div><h2 className="font-bold text-slate-800">Medical Timeline</h2></div>
-              <span className="text-xs text-slate-400">{timelineRecords.length} records</span>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-slate-400">{timelineRecords.length} records</span>
+                <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
+                  {(['month', 'year'] as const).map(mode => (
+                    <button key={mode} onClick={() => setTimelineGroupMode(mode)}
+                      className={`px-3 py-1.5 rounded-md text-xs font-bold capitalize transition-all ${timelineGroupMode === mode ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                      {mode}wise
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
             <div className="p-6"><TimelineView /></div>
           </div>
@@ -1190,7 +1274,7 @@ export default function Records() {
                   <p className="text-sm text-slate-400 mt-3 mb-6">Record saved successfully.</p>
                   <div className="flex flex-col gap-2">
                     <button onClick={() => { setShowAdd(false); navigate(`/records/${saveSuccess.id}`); }} className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm transition-all">View Record</button>
-                    <button onClick={() => { setSaveSuccess(null); setAddStep(1); setFTitle(''); setFDoctor(''); setFSpec(''); setFHospital(''); setFDate(''); setFNotes(''); setFVisibility('private'); setFTags([]); setFFile(null); }} className="w-full py-3 rounded-xl border border-slate-200 text-slate-600 font-bold text-sm hover:bg-slate-50 transition-colors">Add Another</button>
+                    <button onClick={() => { setSaveSuccess(null); setAddStep(1); setFTitle(''); setFDoctor(''); setFSpec(''); setFHospital(''); setFDate(''); setFNotes(''); setFVisibility('private'); setFEmergencyAccess(false); setFTags([]); setFFile(null); }} className="w-full py-3 rounded-xl border border-slate-200 text-slate-600 font-bold text-sm hover:bg-slate-50 transition-colors">Add Another</button>
                     <button onClick={() => setShowAdd(false)} className="text-sm text-slate-400 hover:text-slate-600 py-1 transition-colors">Return to Records</button>
                   </div>
                 </div>
@@ -1240,7 +1324,7 @@ export default function Records() {
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-600 mb-1.5">Visit Date</label>
-                      <input type="date" value={fDate} onChange={e => setFDate(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all" />
+                      <DateField value={fDate} onChange={setFDate} />
                     </div>
                   </div>
 
@@ -1255,15 +1339,29 @@ export default function Records() {
                     <TagInput value={fTags} onChange={setFTags} allTags={allTags} />
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1.5">Visibility</label>
-                    <select value={fVisibility} onChange={e => setFVisibility(e.target.value as typeof fVisibility)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all">
-                      <option value="private">🔒 Private — only you</option>
-                      <option value="shared">🌐 Shared — with doctors</option>
-                      <option value="emergency">🚨 Emergency Access</option>
-                    </select>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1.5">Access</label>
+                      <select value={fVisibility} onChange={e => setFVisibility(e.target.value as typeof fVisibility)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all">
+                        <option value="private">🔒 Private — only you</option>
+                        <option value="shared">🌐 Shared with Doctor</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1.5">Emergency Access</label>
+                      <select value={fEmergencyAccess ? 'yes' : 'no'} onChange={e => setFEmergencyAccess(e.target.value === 'yes')}
+                        className={`w-full border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all ${fEmergencyAccess ? 'bg-rose-50 border-rose-200 text-rose-700 font-semibold' : 'bg-slate-50 border-slate-200 text-slate-700'}`}>
+                        <option value="no">No</option>
+                        <option value="yes">🚨 Yes</option>
+                      </select>
+                    </div>
                   </div>
+                  {fEmergencyAccess && (
+                    <p className="text-[11px] text-rose-600 bg-rose-50 border border-rose-200 px-3 py-2 rounded-lg -mt-2">
+                      Visible to the treating hospital during a medical emergency, regardless of the access setting above.
+                    </p>
+                  )}
 
                   <div>
                     <label className="block text-xs font-bold text-slate-600 mb-1.5">Attach File <span className="text-slate-400 font-normal">(PDF or image, max 5MB)</span></label>
@@ -1308,11 +1406,17 @@ export default function Records() {
               <button onClick={() => setShowSummaryEdit(false)} className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500"><X size={16} /></button>
             </div>
             <div className="px-7 py-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1.5">Blood Group</label>
+                <select value={sBlood} onChange={e => setSBlood(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all">
+                  <option value="">Select blood group</option>
+                  {BLOOD_GROUPS.map(bg => <option key={bg} value={bg}>{bg}</option>)}
+                </select>
+              </div>
               {[
-                { label: 'Blood Group', val: sBlood, set: setSBlood, placeholder: 'e.g. A+, B-, O+' },
                 { label: 'Known Conditions', val: sConditions, set: setSConditions, placeholder: 'e.g. Hypertension, Diabetes Type 2' },
                 { label: 'Allergies', val: sAllergies, set: setSAllergies, placeholder: 'e.g. Penicillin, Dust mites' },
-                { label: 'Emergency Contact', val: sEmergency, set: setSEmergency, placeholder: 'Name — +91 XXXXX XXXXX' },
               ].map(f => (
                 <div key={f.label}>
                   <label className="block text-xs font-bold text-slate-600 mb-1.5">{f.label}</label>
@@ -1320,6 +1424,21 @@ export default function Records() {
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all" />
                 </div>
               ))}
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1.5">Emergency Contact</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <input type="text" value={sEmergencyName} onChange={e => setSEmergencyName(e.target.value)} placeholder="Contact name"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all" />
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">+91</span>
+                    <input type="tel" inputMode="numeric" value={sEmergencyPhone}
+                      onChange={e => setSEmergencyPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                      placeholder="98765 43210" maxLength={10}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all" />
+                  </div>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1.5">Who to contact and their phone number in a medical emergency.</p>
+              </div>
               <div>
                 <label className="block text-xs font-bold text-slate-600 mb-1.5">Health Remarks</label>
                 <textarea value={sRemarks} onChange={e => setSRemarks(e.target.value)} rows={3}

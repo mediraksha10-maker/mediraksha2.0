@@ -6,6 +6,7 @@ import {
   Trash2, Calendar, ChevronRight, Layers, FileImage, FileArchive, AlertCircle,
 } from 'lucide-react';
 import api from '../api/Api';
+import DateField from '../components/DateField';
 
 /* ─── Types ─── */
 interface Tag { id: number; name: string; color: string; }
@@ -145,7 +146,8 @@ export default function CollectionDetail() {
   const [fHospital, setFHospital] = useState('');
   const [fDate, setFDate] = useState('');
   const [fNotes, setFNotes] = useState('');
-  const [fVisibility, setFVisibility] = useState<'private' | 'shared' | 'emergency'>('private');
+  const [fVisibility, setFVisibility] = useState<'private' | 'shared'>('private');
+  const [fEmergencyAccess, setFEmergencyAccess] = useState(false);
   const [fTags, setFTags] = useState('');
   const [fFile, setFFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -222,7 +224,7 @@ export default function CollectionDetail() {
   const resetAddForm = () => {
     setAddStep(1); setSelCategory('prescription');
     setFTitle(''); setFDoctor(''); setFSpec(''); setFHospital('');
-    setFDate(''); setFNotes(''); setFVisibility('private');
+    setFDate(''); setFNotes(''); setFVisibility('private'); setFEmergencyAccess(false);
     setFTags(''); setFFile(null);
     setAddError(''); setUploadProgress(0); setSaveSuccess(false);
   };
@@ -246,6 +248,7 @@ export default function CollectionDetail() {
       fd.append('visitDate', fDate);
       fd.append('notes', fNotes);
       fd.append('visibility', fVisibility);
+      fd.append('emergencyAccess', String(fEmergencyAccess));
       const tagList = fTags.split(',').map(t => t.trim().replace(/^#/, '')).filter(Boolean);
       if (tagList.length) fd.append('tags', JSON.stringify(tagList));
       if (fFile) fd.append('file', fFile);
@@ -704,8 +707,7 @@ export default function CollectionDetail() {
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-600 mb-1.5">Visit Date</label>
-                      <input type="date" value={fDate} onChange={e => setFDate(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all" />
+                      <DateField value={fDate} onChange={setFDate} />
                     </div>
                   </div>
 
@@ -725,14 +727,23 @@ export default function CollectionDetail() {
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all" />
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1.5">Visibility</label>
-                    <select value={fVisibility} onChange={e => setFVisibility(e.target.value as typeof fVisibility)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all">
-                      <option value="private">🔒 Private — only you</option>
-                      <option value="shared">🌐 Shared — with doctors</option>
-                      <option value="emergency">🚨 Emergency Access</option>
-                    </select>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1.5">Access</label>
+                      <select value={fVisibility} onChange={e => setFVisibility(e.target.value as typeof fVisibility)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all">
+                        <option value="private">🔒 Private — only you</option>
+                        <option value="shared">🌐 Shared with Doctor</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1.5">Emergency Access</label>
+                      <select value={fEmergencyAccess ? 'yes' : 'no'} onChange={e => setFEmergencyAccess(e.target.value === 'yes')}
+                        className={`w-full border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all ${fEmergencyAccess ? 'bg-rose-50 border-rose-200 text-rose-700 font-semibold' : 'bg-slate-50 border-slate-200 text-slate-700'}`}>
+                        <option value="no">No</option>
+                        <option value="yes">🚨 Yes</option>
+                      </select>
+                    </div>
                   </div>
 
                   <div>
