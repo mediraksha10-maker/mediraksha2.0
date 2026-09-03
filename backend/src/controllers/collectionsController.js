@@ -78,6 +78,23 @@ export const updateCollection = async (req, res) => {
   }
 };
 
+export const toggleCollectionImportant = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { id } = req.params;
+    const result = await pool.query(
+      `UPDATE "Collection" SET "isImportant" = NOT "isImportant", "updated_at" = NOW()
+       WHERE "id" = $1 AND "userId" = $2 RETURNING "isImportant"`,
+      [id, userId]
+    );
+    if (!result.rows.length) return res.status(404).json({ success: false, message: 'Collection not found.' });
+    return res.json({ success: true, isImportant: result.rows[0].isImportant });
+  } catch (err) {
+    console.error('toggleCollectionImportant error:', err);
+    return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+};
+
 export const deleteCollection = async (req, res) => {
   try {
     const userId = req.user.id;

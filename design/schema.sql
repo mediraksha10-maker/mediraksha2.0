@@ -277,6 +277,8 @@ CREATE TABLE IF NOT EXISTS "Collection" (
     "updated_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+ALTER TABLE "Collection" ADD COLUMN IF NOT EXISTS "isImportant" BOOLEAN DEFAULT FALSE;
+
 CREATE INDEX IF NOT EXISTS idx_collection_user ON "Collection"("userId");
 
 CREATE TABLE IF NOT EXISTS "CollectionRecord" (

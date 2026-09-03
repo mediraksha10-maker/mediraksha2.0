@@ -24,6 +24,7 @@ import {
 import {
   getCollections, createCollection, updateCollection, deleteCollection,
   getCollectionDetail, addRecordToCollection, removeRecordFromCollection, getRecordCollections,
+  toggleCollectionImportant,
 } from '../controllers/collectionsController.js';
 
 import {
@@ -167,6 +168,7 @@ router.delete('/tags/:tagId', deleteTag);
 router.get('/collections', getCollections);
 router.post('/collections', createCollection);
 router.patch('/collections/:id', updateCollection);
+router.patch('/collections/:id/important', toggleCollectionImportant);
 router.delete('/collections/:id', deleteCollection);
 router.get('/collections/:id', getCollectionDetail);
 router.post('/collections/:id/records/:recordId', addRecordToCollection);

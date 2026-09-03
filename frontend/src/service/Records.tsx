@@ -3,9 +3,9 @@ import {
   ArrowLeft, Plus, FileText, FlaskConical, ScanLine, LayoutDashboard,
   Stethoscope, Pencil, X, Upload, ChevronRight, Droplets,
   AlertCircle, Phone, ClipboardList, Trash2, Link2, Search,
-  SlidersHorizontal, ArrowUpDown, LayoutGrid, List, Star, Archive,
+  SlidersHorizontal, ArrowUpDown, Star, Archive,
   Copy, Eye, Clock, CheckCircle2, FileImage, FileArchive, ChevronDown,
-  CalendarDays, Pin, Tag, Hash,
+  Pin, Tag, Hash, Building2, Calendar, User,
   Layers
 } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router';
@@ -19,7 +19,7 @@ interface RecentRecord { category: string; title: string; visitDate: string | nu
 interface Collection {
   id: number; name: string; description: string | null;
   recordCount: number; prescriptionCount: number; labCount: number;
-  scanCount: number; importantCount: number;
+  scanCount: number; importantCount: number; isImportant: boolean;
   created_at: string; updated_at: string;
   recentRecords: RecentRecord[];
   records?: CollectionRecord[];
@@ -48,7 +48,14 @@ const parseEmergencyContact = (raw: string | null): { name: string; phone: strin
   const digits = raw.replace(/\D/g, '');
   const phone = digits.length >= 10 ? digits.slice(-10) : digits;
   const sepIdx = raw.search(/[-–—:]/);
-  const name = (sepIdx !== -1 ? raw.slice(0, sepIdx) : raw.replace(/[\d+()\-–—\s]{6,}/g, '')).trim();
+  let name: string;
+  if (sepIdx !== -1) {
+    name = raw.slice(0, sepIdx).trim();
+  } else {
+    // No separator: if the whole string is just phone-ish characters (any length,
+    // not only long runs), there's no name to show — just a bare number.
+    name = /^[\d+()\s-]+$/.test(raw.trim()) ? '' : raw.trim();
+  }
   return { name, phone };
 };
 
@@ -64,7 +71,6 @@ const formatEmergencyContact = (name: string, phone: string): string => {
 type Tab = 'overview' | 'prescriptions' | 'lab' | 'scans' | 'collections' | 'timeline';
 type CategoryType = 'prescription' | 'lab' | 'scan' | 'discharge' | 'other';
 type SortKey = 'created_at' | 'visitDate' | 'title';
-type ViewMode = 'list' | 'grid';
 
 /* ─── Constants ─── */
 const CATEGORY_META: Record<string, { label: string; prefix: string; color: string; bg: string; icon: React.ReactNode }> = {
@@ -282,12 +288,9 @@ export default function Records() {
   const [loading, setLoading] = useState(true);
 
   const [activeTab, setActiveTab] = useState<Tab>('overview');
-  const [viewMode, setViewMode] = useState<ViewMode>(() => (localStorage.getItem('recordsView') as ViewMode) || 'list');
-  const [timelineGroupMode, setTimelineGroupMode] = useState<'month' | 'year'>('month');
 
   const [searchQ, setSearchQ] = useState('');
   const [showFilters, setShowFilters] = useState(false);
-  const [filterCategory, setFilterCategory] = useState('');
   const [filterTag, setFilterTag] = useState('');
   const [filterDoctor, setFilterDoctor] = useState('');
   const [filterHospital, setFilterHospital] = useState('');
@@ -376,8 +379,6 @@ export default function Records() {
     }
   }, [searchParams]);
 
-  const setView = (v: ViewMode) => { setViewMode(v); localStorage.setItem('recordsView', v); };
-
   const filteredRecords = useMemo(() => {
     let list = [...records];
     if (!showArchived) list = list.filter(r => !r.isArchived);
@@ -390,7 +391,6 @@ export default function Records() {
         r.tags.some(t => t.name.toLowerCase().includes(q))
       );
     }
-    if (filterCategory) list = list.filter(r => r.category === filterCategory);
     if (filterTag) list = list.filter(r => r.tags.some(t => t.name === filterTag));
     if (filterDoctor.trim()) list = list.filter(r => (r.doctorName || '').toLowerCase().includes(filterDoctor.toLowerCase()));
     if (filterHospital.trim()) list = list.filter(r => (r.hospital || '').toLowerCase().includes(filterHospital.toLowerCase()));
@@ -401,7 +401,7 @@ export default function Records() {
       return sortDesc ? bv.localeCompare(av) : av.localeCompare(bv);
     });
     return list;
-  }, [records, searchQ, filterCategory, filterTag, filterDoctor, filterHospital, filterDateFrom, filterDateTo, showArchived, sortKey, sortDesc]);
+  }, [records, searchQ, filterTag, filterDoctor, filterHospital, filterDateFrom, filterDateTo, showArchived, sortKey, sortDesc]);
 
   const prescriptions = useMemo(() => filteredRecords.filter(r => r.category === 'prescription'), [filteredRecords]);
   const labReports    = useMemo(() => filteredRecords.filter(r => r.category === 'lab'), [filteredRecords]);
@@ -414,6 +414,67 @@ export default function Records() {
       const av = a.visitDate || a.created_at, bv = b.visitDate || b.created_at;
       return bv.localeCompare(av);
     }), [records]);
+
+  /* ── Timeline: category filter, month grouping, collapse + jump state ── */
+  const [timelineCategory, setTimelineCategory] = useState<string>('');
+  const [collapsedMonths, setCollapsedMonths] = useState<Set<string>>(new Set());
+  const [expandedYears, setExpandedYears] = useState<Set<string>>(new Set());
+  const yearsInitRef = useRef(false);
+  const monthRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  const timelineCategoryCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const r of timelineRecords) counts[r.category] = (counts[r.category] || 0) + 1;
+    return counts;
+  }, [timelineRecords]);
+
+  const filteredTimelineRecords = useMemo(() =>
+    timelineCategory ? timelineRecords.filter(r => r.category === timelineCategory) : timelineRecords,
+    [timelineRecords, timelineCategory]);
+
+  const timelineGroups = useMemo(() => {
+    const map = new Map<string, Map<string, Report[]>>();
+    for (const r of filteredTimelineRecords) {
+      const d = r.visitDate ? new Date(r.visitDate) : new Date(r.created_at);
+      const year = String(d.getFullYear());
+      const month = d.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+      if (!map.has(year)) map.set(year, new Map());
+      const monthMap = map.get(year)!;
+      if (!monthMap.has(month)) monthMap.set(month, []);
+      monthMap.get(month)!.push(r);
+    }
+    return map;
+  }, [filteredTimelineRecords]);
+
+  useEffect(() => {
+    if (!yearsInitRef.current && timelineGroups.size > 0) {
+      yearsInitRef.current = true;
+      setExpandedYears(new Set([Array.from(timelineGroups.keys())[0]]));
+    }
+  }, [timelineGroups]);
+
+  const toggleYear = (year: string) => setExpandedYears(prev => {
+    const next = new Set(prev);
+    if (next.has(year)) next.delete(year); else next.add(year);
+    return next;
+  });
+
+  const toggleMonth = (month: string) => setCollapsedMonths(prev => {
+    const next = new Set(prev);
+    if (next.has(month)) next.delete(month); else next.add(month);
+    return next;
+  });
+
+  const jumpToMonth = (year: string, month: string) => {
+    setExpandedYears(prev => new Set(prev).add(year));
+    setCollapsedMonths(prev => {
+      if (!prev.has(month)) return prev;
+      const next = new Set(prev);
+      next.delete(month);
+      return next;
+    });
+    requestAnimationFrame(() => monthRefs.current[month]?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  };
 
   const openAdd = (defaultCat?: CategoryType) => {
     if (defaultCat) { setSelCategory(defaultCat); setAddStep(2); setDirectStep2(true); }
@@ -551,7 +612,16 @@ export default function Records() {
     } catch {}
   };
 
-  const activeFiltersCount = [filterCategory, filterTag, filterDoctor, filterHospital, filterDateFrom, filterDateTo, showArchived ? 'x' : ''].filter(Boolean).length;
+  const handleToggleCollectionImportant = async (id: number) => {
+    try {
+      const res = await api.patch(`/user/collections/${id}/important`);
+      if (res.data?.success) {
+        setCollections(prev => prev.map(c => c.id === id ? { ...c, isImportant: res.data.isImportant } : c));
+      }
+    } catch {}
+  };
+
+  const activeFiltersCount = [filterTag, filterDoctor, filterHospital, filterDateFrom, filterDateTo, showArchived ? 'x' : ''].filter(Boolean).length;
 
   const TABS: { key: Tab; label: string; icon: React.ReactNode; count?: number }[] = [
     { key: 'overview',      label: 'Overview',     icon: <LayoutDashboard size={16} /> },
@@ -567,423 +637,612 @@ export default function Records() {
     <div className="space-y-3 mb-6">
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 min-w-64">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
           <input type="text" value={searchQ} onChange={e => setSearchQ(e.target.value)}
             placeholder="Search by title, doctor, tag, notes…"
-            className="w-full pl-9 pr-8 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all" />
-          {searchQ && <button onClick={() => setSearchQ('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><X size={14} /></button>}
+            className="w-full pl-11 pr-9 py-3 bg-white border border-slate-200 rounded-2xl text-sm text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all" />
+          {searchQ && <button onClick={() => setSearchQ('')} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><X size={14} /></button>}
         </div>
         <button onClick={() => setShowFilters(v => !v)}
-          className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl border text-sm font-semibold transition-all ${showFilters || activeFiltersCount > 0 ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}>
+          className={`flex items-center gap-2 px-4 py-3 rounded-2xl border text-sm font-bold transition-all ${showFilters || activeFiltersCount > 0 ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}>
           <SlidersHorizontal size={15} /> Filters
-          {activeFiltersCount > 0 && <span className="bg-indigo-600 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">{activeFiltersCount}</span>}
+          {activeFiltersCount > 0 && <span className="bg-indigo-600 text-white text-[10px] font-bold min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center">{activeFiltersCount}</span>}
         </button>
         <div ref={sortRef} className="relative">
           <button onClick={() => setShowSortMenu(v => !v)}
-            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-600 hover:border-slate-300 transition-all">
+            className="flex items-center gap-2 px-4 py-3 rounded-2xl border border-slate-200 bg-white text-sm font-bold text-slate-600 hover:border-slate-300 transition-all">
             <ArrowUpDown size={15} /> Sort <ChevronDown size={13} className="text-slate-400" />
           </button>
           {showSortMenu && (
-            <div className="absolute right-0 top-11 w-48 bg-white rounded-xl border border-slate-100 shadow-xl z-30 p-1">
+            <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-2xl border border-slate-100 shadow-xl shadow-slate-300/30 z-30 p-1.5">
               {([['created_at', 'Upload Date'], ['visitDate', 'Visit Date'], ['title', 'Title']] as [SortKey, string][]).map(([k, l]) => (
                 <button key={k} onClick={() => { if (sortKey === k) setSortDesc(v => !v); else { setSortKey(k); setSortDesc(true); } setShowSortMenu(false); }}
-                  className={`w-full flex items-center justify-between px-3 py-2 text-sm rounded-lg transition-colors ${sortKey === k ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-700 hover:bg-slate-50'}`}>
+                  className={`w-full flex items-center justify-between px-3 py-2.5 text-sm rounded-xl transition-colors ${sortKey === k ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-slate-700 hover:bg-slate-50 font-medium'}`}>
                   {l} {sortKey === k && <span className="text-xs">{sortDesc ? '↓' : '↑'}</span>}
                 </button>
               ))}
             </div>
           )}
         </div>
-        <div className="flex items-center bg-white border border-slate-200 rounded-xl overflow-hidden">
-          <button onClick={() => setView('list')} className={`px-3 py-2.5 transition-colors ${viewMode === 'list' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50'}`}><List size={15} /></button>
-          <button onClick={() => setView('grid')} className={`px-3 py-2.5 transition-colors ${viewMode === 'grid' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50'}`}><LayoutGrid size={15} /></button>
-        </div>
       </div>
 
       {showFilters && (
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4">
-          <div>
-            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Type</label>
-            <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400">
-              <option value="">All</option>
-              {Object.entries(CATEGORY_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-            </select>
+        <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-[0_8px_24px_-8px_rgba(15,23,42,0.08)]">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-[10.5px] font-bold text-slate-400 uppercase tracking-wider mb-2">Doctor</label>
+              <input value={filterDoctor} onChange={e => setFilterDoctor(e.target.value)} placeholder="Any doctor"
+                className={`w-full rounded-xl px-3.5 py-3 text-sm font-semibold placeholder:font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-all ${filterDoctor ? 'bg-indigo-50 border border-indigo-200 text-indigo-700' : 'bg-slate-50 border border-slate-200 text-slate-700'}`} />
+            </div>
+            <div>
+              <label className="block text-[10.5px] font-bold text-slate-400 uppercase tracking-wider mb-2">Hospital</label>
+              <input value={filterHospital} onChange={e => setFilterHospital(e.target.value)} placeholder="Any hospital"
+                className={`w-full rounded-xl px-3.5 py-3 text-sm font-semibold placeholder:font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-all ${filterHospital ? 'bg-indigo-50 border border-indigo-200 text-indigo-700' : 'bg-slate-50 border border-slate-200 text-slate-700'}`} />
+            </div>
+            <div>
+              <label className="block text-[10.5px] font-bold text-slate-400 uppercase tracking-wider mb-2">Tag</label>
+              <div className="relative">
+                <select value={filterTag} onChange={e => setFilterTag(e.target.value)}
+                  className={`w-full appearance-none rounded-xl pl-3.5 pr-9 py-3 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-all ${filterTag ? 'bg-indigo-50 border border-indigo-200 text-indigo-700' : 'bg-slate-50 border border-slate-200 text-slate-700'}`}>
+                  <option value="">All tags</option>
+                  {allTags.map(t => <option key={t.id} value={t.name}>#{t.name}</option>)}
+                </select>
+                <ChevronDown size={14} className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-[10.5px] font-bold text-slate-400 uppercase tracking-wider mb-2">From</label>
+              <DateField value={filterDateFrom} onChange={setFilterDateFrom} />
+            </div>
+            <div>
+              <label className="block text-[10.5px] font-bold text-slate-400 uppercase tracking-wider mb-2">To</label>
+              <DateField value={filterDateTo} onChange={setFilterDateTo} />
+            </div>
+            <div>
+              <label className="block text-[10.5px] font-bold text-slate-400 uppercase tracking-wider mb-2">Show Archived</label>
+              <button type="button" onClick={() => setShowArchived(v => !v)}
+                className="w-full flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-3 hover:border-slate-300 transition-colors">
+                <span className={`w-9 h-5 rounded-full relative shrink-0 transition-colors ${showArchived ? 'bg-indigo-600' : 'bg-slate-300'}`}>
+                  <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${showArchived ? 'left-[18px]' : 'left-0.5'}`} />
+                </span>
+                <span className="text-sm font-semibold text-slate-600">{showArchived ? 'On' : 'Off'}</span>
+              </button>
+            </div>
           </div>
-          <div>
-            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Tag</label>
-            <select value={filterTag} onChange={e => setFilterTag(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400">
-              <option value="">All</option>
-              {allTags.map(t => <option key={t.id} value={t.name}>#{t.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Doctor</label>
-            <input value={filterDoctor} onChange={e => setFilterDoctor(e.target.value)} placeholder="Filter by doctor" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400" />
-          </div>
-          <div>
-            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Hospital</label>
-            <input value={filterHospital} onChange={e => setFilterHospital(e.target.value)} placeholder="Filter by hospital" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400" />
-          </div>
-          <div>
-            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">From</label>
-            <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400" />
-          </div>
-          <div>
-            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">To</label>
-            <input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400" />
-          </div>
-          <div className="flex flex-col justify-between">
-            <label className="flex items-center gap-2 cursor-pointer mt-5">
-              <input type="checkbox" checked={showArchived} onChange={e => setShowArchived(e.target.checked)} className="rounded" />
-              <span className="text-sm text-slate-600 font-medium">Show archived</span>
-            </label>
-            <button onClick={() => { setFilterCategory(''); setFilterTag(''); setFilterDoctor(''); setFilterHospital(''); setFilterDateFrom(''); setFilterDateTo(''); setShowArchived(false); }} className="text-xs text-indigo-600 hover:underline font-semibold mt-2">Clear all</button>
+          <div className="flex justify-end mt-4 pt-4 border-t border-slate-50">
+            <button onClick={() => { setFilterTag(''); setFilterDoctor(''); setFilterHospital(''); setFilterDateFrom(''); setFilterDateTo(''); setShowArchived(false); }} className="text-xs font-bold text-indigo-600 hover:underline">
+              Clear all filters
+            </button>
           </div>
         </div>
       )}
     </div>
   );
 
-  /* ─── Grid card ─── */
-  const GridCard = ({ r }: { r: Report }) => (
-    <div onClick={() => navigate(`/records/${r.id}`)} onContextMenu={e => openCtx(e, r)}
-      className="bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer group p-5 flex flex-col gap-3">
-      <div className="flex items-start justify-between gap-2">
-        <div className={`w-9 h-9 rounded-xl flex items-center justify-center border ${fmt(r.category).bg} ${fmt(r.category).color} shrink-0`}>{fmt(r.category).icon}</div>
-        <div className="flex items-center gap-1">
-          {r.isPinned && <Pin size={12} className="fill-indigo-400 text-indigo-400" />}
-          {r.isImportant && <Star size={12} className="fill-amber-400 text-amber-400" />}
+  /* ─── Flat report cards (Prescriptions / Lab Reports) ─── */
+  const visitFmtShort = (ds: string) => new Date(ds).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  const visitDayMonth = (ds: string) => {
+    const d = new Date(ds);
+    return {
+      day: d.toLocaleDateString('en-IN', { day: 'numeric' }),
+      monthYear: d.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }),
+    };
+  };
+
+  const RecordMeta = ({ label, value, icon }: { label: string; value: string | null; icon?: React.ReactNode }) => {
+    if (!value) return null;
+    return (
+      <span className="record-context__item" title={`${label}: ${value}`} aria-label={`${label}: ${value}`}>
+        <span className="record-context__label">{icon}</span>
+        <span className="record-context__value">{value}</span>
+      </span>
+    );
+  };
+
+  const PrescriptionCard = ({ r }: { r: Report }) => {
+    const dm = r.visitDate ? visitDayMonth(r.visitDate) : null;
+
+    return (
+      <div key={r.id} onClick={() => navigate(`/records/${r.id}`)} onContextMenu={e => openCtx(e, r)}
+        className="record-list-card group">
+        <span className="record-list-card__rail bg-indigo-500" />
+        <div className="record-list-card__body flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-5">
+          <div className="record-list-card__icon w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-700 flex items-center justify-center shrink-0">
+            <Stethoscope size={22} />
+          </div>
+
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[10px] font-black uppercase tracking-[.12em] text-indigo-600">Prescription</span>
+              <span className="text-slate-300">•</span>
+              <span className="font-mono text-[10px] font-bold text-slate-400">{r.recordId}</span>
+              {r.isPinned && <Pin size={12} className="text-indigo-500 fill-current" />}
+              {r.isImportant && <Star size={12} className="fill-amber-400 text-amber-400" />}
+            </div>
+            <p className="font-black text-slate-900 text-[17px] tracking-tight leading-tight mt-1.5 truncate">{r.title}</p>
+            <div className="record-context mt-3">
+              <RecordMeta label="Doctor" value={r.doctorName} icon={<User size={12} />} />
+              <RecordMeta label="Department" value={r.specialization} icon={<Stethoscope size={12} />} />
+              <RecordMeta label="Facility" value={r.hospital} icon={<Building2 size={12} />} />
+            </div>
+            <div className="flex items-center gap-1.5 flex-wrap mt-3">
+              {r.tags.slice(0, 3).map(t => <TagChip key={t.id} tag={t} />)}
+              {r.mimeType && <FileBadge mimeType={r.mimeType} />}
+              {r.isArchived && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200">Archived</span>}
+            </div>
+          </div>
+
+          <div className="record-list-card__date shrink-0 sm:px-5 sm:min-w-[112px]">
+            {dm ? <><div className="text-[24px] font-black text-slate-900 leading-none tabular-nums">{dm.day}</div><div className="text-[10px] font-black text-slate-400 uppercase tracking-[.12em] mt-1">{dm.monthYear}</div></> : <span className="text-xs text-slate-400">Date not added</span>}
+          </div>
+          <div className="record-list-card__action w-9 h-9 rounded-xl bg-slate-50 text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-600 flex items-center justify-center shrink-0">
+            <ChevronRight size={18} />
+          </div>
         </div>
       </div>
-      <div>
-        <RecordIdBadge recordId={r.recordId} category={r.category} />
-        <p className="font-bold text-slate-800 text-sm mt-2 group-hover:text-indigo-600 transition-colors line-clamp-2">{r.title}</p>
-        {r.doctorName && <p className="text-xs text-slate-500 mt-1 truncate">{r.doctorName}</p>}
-        {r.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-2">
-            {r.tags.slice(0, 3).map(t => <TagChip key={t.id} tag={t} />)}
-            {r.tags.length > 3 && <span className="text-[10px] text-slate-400 font-medium self-center">+{r.tags.length - 3}</span>}
+    );
+  };
+
+  const renderPrescriptionList = (rows: Report[]) => {
+    if (!rows.length) return <EmptyState label="Prescriptions" onAdd={() => openAdd('prescription')} />;
+    return <div className="flex flex-col gap-3">{rows.map(r => <PrescriptionCard key={r.id} r={r} />)}</div>;
+  };
+
+  const LabReportCard = ({ r }: { r: Report }) => {
+    const dm = r.visitDate ? visitDayMonth(r.visitDate) : null;
+
+    return (
+      <div key={r.id} onClick={() => navigate(`/records/${r.id}`)} onContextMenu={e => openCtx(e, r)}
+        className="record-list-card group">
+        <span className="record-list-card__rail bg-emerald-500" />
+        <div className="record-list-card__body flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-5">
+          <div className="record-list-card__icon w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0">
+            <FlaskConical size={22} />
           </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[10px] font-black uppercase tracking-[.12em] text-emerald-600">Lab report</span>
+              <span className="text-slate-300">•</span>
+              <span className="font-mono text-[10px] font-bold text-slate-400">{r.recordId}</span>
+              {r.isPinned && <Pin size={12} className="text-emerald-600 fill-current" />}
+              {r.isImportant && <Star size={12} className="fill-amber-400 text-amber-400" />}
+            </div>
+            <p className="font-black text-slate-900 text-[17px] tracking-tight leading-tight mt-1.5 truncate">{r.title}</p>
+            <div className="record-context mt-3">
+              <RecordMeta label="Facility" value={r.hospital} icon={<Building2 size={12} />} />
+              <RecordMeta label="Doctor" value={r.doctorName} icon={<User size={12} />} />
+              <RecordMeta label="Department" value={r.specialization} icon={<FlaskConical size={12} />} />
+            </div>
+            <div className="flex items-center gap-1.5 flex-wrap mt-3">
+              {r.tags.slice(0, 3).map(t => <TagChip key={t.id} tag={t} />)}
+              {r.mimeType && <FileBadge mimeType={r.mimeType} />}
+              {r.isArchived && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200">Archived</span>}
+            </div>
+          </div>
+          <div className="record-list-card__date shrink-0 sm:px-5 sm:min-w-[112px]">
+            {dm ? <><div className="text-[24px] font-black text-slate-900 leading-none tabular-nums">{dm.day}</div><div className="text-[10px] font-black text-slate-400 uppercase tracking-[.12em] mt-1">{dm.monthYear}</div></> : <span className="text-xs text-slate-400">Date not added</span>}
+          </div>
+          <div className="record-list-card__action w-9 h-9 rounded-xl bg-slate-50 text-slate-400 group-hover:bg-emerald-50 group-hover:text-emerald-600 flex items-center justify-center shrink-0">
+            <ChevronRight size={18} />
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderLabReportList = (rows: Report[]) => {
+    if (!rows.length) return <EmptyState label="Lab Reports" onAdd={() => openAdd('lab')} />;
+    return <div className="flex flex-col gap-3">{rows.map(r => <LabReportCard key={r.id} r={r} />)}</div>;
+  };
+
+  /* ─── Scan gallery card ─── */
+  const SCAN_PREVIEW_STYLES = [
+    'radial-gradient(circle at 30% 20%, #3f3f46, #18181b 70%)',
+    'radial-gradient(circle at 30% 20%, #4c1d95, #1e1b4b 70%)',
+    'radial-gradient(circle at 50% 30%, #0c4a6e, #0f172a 75%)',
+  ];
+
+  const ScanGalleryCard = ({ r }: { r: Report }) => (
+    <div key={r.id} onClick={() => navigate(`/records/${r.id}`)} onContextMenu={e => openCtx(e, r)}
+      className="record-card-lift bg-white border border-slate-100 rounded-[22px] overflow-hidden hover:border-violet-200 cursor-pointer group">
+      <div className="relative h-44 flex items-center justify-center overflow-hidden" style={{ background: SCAN_PREVIEW_STYLES[r.id % SCAN_PREVIEW_STYLES.length] }}>
+        <ScanLine size={64} className="text-white/10" />
+        <span className="absolute top-3 left-3 bg-white/15 backdrop-blur border border-white/25 text-white text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-1 rounded-full">
+          {r.specialization || 'Scan'}
+        </span>
+        <span className="absolute top-3 right-3 font-mono bg-white/15 backdrop-blur border border-white/25 text-white text-[10px] font-extrabold px-2 py-1 rounded-md">
+          {r.recordId}
+        </span>
+        {(r.isPinned || r.isImportant) && (
+          <span className="absolute bottom-3 left-3 flex items-center gap-1.5">
+            {r.isPinned && <Pin size={12} className="text-white fill-white/80" />}
+            {r.isImportant && <Star size={12} className="text-amber-300 fill-amber-300" />}
+          </span>
         )}
       </div>
-      <div className="mt-auto pt-3 border-t border-slate-50 flex items-center justify-between gap-2 flex-wrap">
-        <span className="text-xs text-slate-400">{relativeDate(r.created_at)}</span>
-        <div className="flex items-center gap-1.5">
-          <FileBadge mimeType={r.mimeType} />
-          {r.connectionCount > 0 && <span className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded-full"><Link2 size={9} /> {r.connectionCount}</span>}
-          {r.collections.length > 0 && <span className="inline-flex items-center gap-1 text-[10px] font-bold text-violet-600 bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded-full"><Layers size={9} /> {r.collections.length}</span>}
-          {r.isArchived && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">Archived</span>}
+      <div className="p-5">
+        <p className="font-extrabold text-slate-800 text-[14.5px] leading-snug group-hover:text-violet-700 transition-colors">{r.title}</p>
+        <div className="flex flex-col gap-1 mt-2.5 text-[11.5px] text-slate-500">
+          {r.hospital && <span className="flex items-center gap-1.5"><Building2 size={12} className="shrink-0" />{r.hospital}</span>}
+          {r.doctorName && <span className="flex items-center gap-1.5"><User size={12} className="shrink-0" />{r.doctorName}</span>}
+          {r.visitDate && <span className="flex items-center gap-1.5"><Calendar size={12} className="shrink-0" />{visitFmtShort(r.visitDate)}</span>}
+        </div>
+        <div className="flex items-center justify-between mt-3.5 pt-3.5 border-t border-slate-50">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {r.tags.slice(0, 2).map(t => <TagChip key={t.id} tag={t} />)}
+            {r.isArchived && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200">Archived</span>}
+          </div>
+          <span className="text-[11px] font-extrabold text-violet-600 flex items-center gap-1 whitespace-nowrap">
+            View Scan <ChevronRight size={13} />
+          </span>
         </div>
       </div>
     </div>
   );
 
-  /* ─── List table renderer ─── */
-  const renderTable = (rows: Report[], emptyLabel: string, cat: CategoryType) => {
-    if (!rows.length) return <EmptyState label={emptyLabel} onAdd={() => openAdd(cat)} />;
-    if (viewMode === 'grid') return (
-      <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {rows.map(r => <GridCard key={r.id} r={r} />)}
-      </div>
-    );
-    return (
-      <div className="overflow-x-auto">
-        <table className="w-full text-left">
-          <thead>
-            <tr className="border-b border-slate-100 bg-slate-50/60">
-              {['Record ID', 'Date', 'Title', 'Doctor', 'Tags', 'Labels'].map(h => (
-                <th key={h} className="py-3.5 px-5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-50">
-            {rows.map(r => (
-              <tr key={r.id} onClick={() => navigate(`/records/${r.id}`)} onContextMenu={e => openCtx(e, r)}
-                className="hover:bg-slate-50 transition-colors cursor-pointer group">
-                <td className="py-4 px-5"><RecordIdBadge recordId={r.recordId} category={r.category} /></td>
-                <td className="py-4 px-5 text-sm text-slate-600 whitespace-nowrap">
-                  {r.visitDate ? new Date(r.visitDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : <span className="text-slate-300">—</span>}
-                </td>
-                <td className="py-4 px-5">
-                  <div className="flex items-center gap-2">
-                    {r.isPinned && <Pin size={12} className="fill-indigo-400 text-indigo-400 shrink-0" />}
-                    {r.isImportant && <Star size={12} className="fill-amber-400 text-amber-400 shrink-0" />}
-                    <span className="font-semibold text-sm text-slate-800 group-hover:text-indigo-600 transition-colors">{r.title}</span>
-                  </div>
-                </td>
-                <td className="py-4 px-5 text-sm text-slate-600">{r.doctorName || <span className="text-slate-300">—</span>}</td>
-                <td className="py-4 px-5">
-                  <div className="flex items-center gap-1 flex-wrap">
-                    {r.tags.slice(0, 2).map(t => <TagChip key={t.id} tag={t} />)}
-                    {r.tags.length > 2 && <span className="text-[10px] text-slate-400 font-medium">+{r.tags.length - 2}</span>}
-                    {r.tags.length === 0 && <span className="text-slate-300 text-xs">—</span>}
-                  </div>
-                </td>
-                <td className="py-4 px-4">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <FileBadge mimeType={r.mimeType} />
-                    {r.connectionCount > 0 && <span className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded-full"><Link2 size={9} /> {r.connectionCount}</span>}
-                    {r.collections.length > 0 && <span className="inline-flex items-center gap-1 text-[10px] font-bold text-violet-600 bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded-full"><Layers size={9} /> {r.collections.length}</span>}
-                    {r.isArchived && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200">Archived</span>}
-                    <ChevronRight size={15} className="text-slate-300 group-hover:text-slate-500 transition-colors ml-1" />
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    );
+  const renderScanGallery = (rows: Report[]) => {
+    if (!rows.length) return <EmptyState label="Scans" onAdd={() => openAdd('scan')} />;
+    return <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">{rows.map(r => <ScanGalleryCard key={r.id} r={r} />)}</div>;
   };
 
   /* ─── Timeline ─── */
-  const TimelineView = () => {
-    if (!timelineRecords.length) return <EmptyState label="records" onAdd={() => openAdd()} />;
-    let lastGroup = '';
-    return (
-      <div className="relative pl-8">
-        <div className="absolute left-3 top-0 bottom-0 w-0.5 bg-slate-200 rounded-full" />
-        {timelineRecords.map(r => {
-          const date = r.visitDate ? new Date(r.visitDate) : new Date(r.created_at);
-          const groupKey = timelineGroupMode === 'year'
-            ? date.getFullYear().toString()
-            : date.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
-          const showGroup = groupKey !== lastGroup;
-          lastGroup = groupKey;
-          const m = fmt(r.category);
+  const TimelineRail = () => (
+    <div className="w-56 shrink-0 space-y-5">
+      <div className="bg-white border border-slate-100 rounded-2xl p-4">
+        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1 pb-2.5">Jump to</p>
+        {Array.from(timelineGroups.entries()).map(([year, months]) => {
+          const total = Array.from(months.values()).reduce((s, arr) => s + arr.length, 0);
+          const isOpen = expandedYears.has(year);
           return (
-            <div key={r.id}>
-              {showGroup && (
-                <div className="relative flex items-center gap-3 mb-4 mt-6 first:mt-0">
-                  <div className="absolute -left-8 w-6 h-6 rounded-full bg-slate-700 flex items-center justify-center"><CalendarDays size={12} className="text-white" /></div>
-                  <span className="text-xs font-black text-slate-500 uppercase tracking-widest pl-1">{groupKey}</span>
-                </div>
-              )}
-              <div className="relative flex items-start gap-4 mb-4 group">
-                <div className={`absolute -left-8 mt-1 w-6 h-6 rounded-full border-2 border-white shadow flex items-center justify-center ${m.bg} ${m.color}`}>{m.icon}</div>
-                <div onClick={() => navigate(`/records/${r.id}`)} onContextMenu={e => openCtx(e, r)}
-                  className="flex-1 bg-white rounded-2xl border border-slate-100 p-4 hover:shadow-md transition-all cursor-pointer hover:border-indigo-200">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap mb-1">
-                        <RecordIdBadge recordId={r.recordId} category={r.category} />
-                        {r.isPinned && <Pin size={11} className="fill-indigo-400 text-indigo-400" />}
-                        {r.isImportant && <Star size={11} className="fill-amber-400 text-amber-400" />}
-                        <FileBadge mimeType={r.mimeType} />
-                      </div>
-                      <p className="font-bold text-slate-800 text-sm group-hover:text-indigo-600 transition-colors">{r.title}</p>
-                      <div className="flex items-center gap-3 mt-1.5 text-xs text-slate-400 flex-wrap">
-                        {r.doctorName && <span>{r.doctorName}{r.specialization ? ` · ${r.specialization}` : ''}</span>}
-                        {r.hospital && <span>{r.hospital}</span>}
-                        <span>{date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                      </div>
-                      {r.tags.length > 0 && <div className="flex flex-wrap gap-1 mt-2">{r.tags.map(t => <TagChip key={t.id} tag={t} />)}</div>}
-                    </div>
-                    <ChevronRight size={16} className="text-slate-300 shrink-0 mt-1 group-hover:text-slate-500 transition-colors" />
-                  </div>
-                </div>
-              </div>
+            <div key={year}>
+              <button onClick={() => toggleYear(year)}
+                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-black text-slate-800 hover:bg-slate-50 transition-colors">
+                <ChevronDown size={12} className={`text-slate-400 transition-transform ${isOpen ? '' : '-rotate-90'}`} />
+                {year}
+                <span className="ml-auto text-[11px] font-semibold text-slate-400">{total}</span>
+              </button>
+              {isOpen && Array.from(months.entries()).map(([month, recs]) => (
+                <button key={month} onClick={() => jumpToMonth(year, month)}
+                  className="w-full flex items-center gap-2.5 pl-7 pr-3 py-2 rounded-lg text-[13px] font-semibold text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 transition-colors">
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-300 shrink-0" />
+                  <span className="truncate">{month}</span>
+                  <span className="ml-auto text-[11px] font-bold text-slate-400 shrink-0">{recs.length}</span>
+                </button>
+              ))}
             </div>
           );
         })}
       </div>
-    );
-  };
 
-  /* ─── Collections tab ─── */
-  const JOURNEY_CATEGORY_COLORS: Record<string, { bg: string; text: string; border: string; icon: React.ReactNode }> = {
-    prescription: { bg: 'bg-indigo-50', text: 'text-indigo-600', border: 'border-indigo-200', icon: <Stethoscope size={11} /> },
-    lab:          { bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-200', icon: <FlaskConical size={11} /> },
-    scan:         { bg: 'bg-violet-50', text: 'text-violet-600', border: 'border-violet-200', icon: <ScanLine size={11} /> },
-    discharge:    { bg: 'bg-amber-50', text: 'text-amber-600', border: 'border-amber-200', icon: <ChevronDown size={11} /> },
-    other:        { bg: 'bg-slate-100', text: 'text-slate-500', border: 'border-slate-200', icon: <FileText size={11} /> },
-  };
-
-  const CollectionsTab = () => (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-slate-500">
-          {collections.length} medical journey{collections.length !== 1 ? 's' : ''}
-        </p>
-        <button
-          onClick={() => setShowNewCol(true)}
-          className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold px-4 py-2 rounded-xl transition-all shadow-md shadow-indigo-100">
-          <Plus size={15} /> New Journey
+      <div className="bg-white border border-slate-100 rounded-2xl p-4">
+        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1 pb-2.5">Category</p>
+        <button onClick={() => setTimelineCategory('')}
+          className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-bold transition-colors ${!timelineCategory ? 'bg-slate-100 text-slate-800' : 'text-slate-600 hover:bg-slate-50'}`}>
+          All records
+          <span className="ml-auto text-[11px] font-semibold text-slate-400">{timelineRecords.length}</span>
         </button>
-      </div>
-
-      {/* Create form */}
-      {showNewCol && (
-        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-          <h3 className="font-bold text-slate-800 mb-4">Create Medical Journey</h3>
-          <div className="space-y-3">
-            <div>
-              <label className="block text-xs font-bold text-slate-600 mb-1.5">Name <span className="text-rose-500">*</span></label>
-              <input
-                value={newColName}
-                onChange={e => setNewColName(e.target.value)}
-                placeholder="e.g. My Diabetes Journey, Knee Surgery 2026"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                autoFocus
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-600 mb-1.5">Description</label>
-              <input
-                value={newColDesc}
-                onChange={e => setNewColDesc(e.target.value)}
-                placeholder="What health episode does this track?"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-            <div className="flex gap-2 pt-1">
-              <button
-                onClick={() => { setShowNewCol(false); setNewColName(''); setNewColDesc(''); }}
-                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-sm hover:bg-slate-50 transition-colors">
-                Cancel
-              </button>
-              <button
-                onClick={handleCreateCollection}
-                disabled={!newColName.trim()}
-                className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-sm transition-all">
-                Create & Open
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Empty state */}
-      {collections.length === 0 && !showNewCol && (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-indigo-50 to-violet-50 border border-indigo-100 flex items-center justify-center mb-5">
-            <Layers size={30} className="text-indigo-300" />
-          </div>
-          <p className="font-black text-slate-700 text-xl mb-2">No medical journeys yet</p>
-          <p className="text-sm text-slate-400 mb-6 max-w-xs">
-            Group your records into journeys like "Knee Surgery 2026" or "Diabetes Management" to see your health history as a timeline.
-          </p>
-          <button
-            onClick={() => setShowNewCol(true)}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold px-6 py-3 rounded-xl transition-all shadow-md shadow-indigo-100">
-            <Plus size={16} /> New Journey
+        {(Object.keys(CATEGORY_META) as CategoryType[]).filter(k => timelineCategoryCounts[k]).map(k => (
+          <button key={k} onClick={() => setTimelineCategory(k)}
+            className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-semibold transition-colors ${timelineCategory === k ? `${CATEGORY_META[k].bg} ${CATEGORY_META[k].color}` : 'text-slate-600 hover:bg-slate-50'}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${CATEGORY_META[k].color.replace('text-', 'bg-')}`} />
+            {CATEGORY_META[k].label}
+            <span className="ml-auto text-[11px] font-bold text-slate-400">{timelineCategoryCounts[k]}</span>
           </button>
-        </div>
-      )}
+        ))}
+      </div>
+    </div>
+  );
 
-      {/* Journey Cards */}
-      <div className="grid gap-4">
-        {collections.map(col => {
-          const startDate = col.created_at
-            ? new Date(col.created_at).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })
-            : null;
-          const lastDate = col.updated_at
-            ? new Date(col.updated_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
-            : null;
+  const TimelineView = () => {
+    if (!filteredTimelineRecords.length) return <EmptyState label="records" onAdd={() => openAdd()} />;
+    return (
+      <div>
+        {Array.from(timelineGroups.entries()).map(([, months]) =>
+          Array.from(months.entries()).map(([month, recs]) => {
+            const isCollapsed = collapsedMonths.has(month);
+            return (
+              <div key={month} ref={el => { monthRefs.current[month] = el; }} className="pt-5 first:pt-0">
+                <button onClick={() => toggleMonth(month)} className="w-full flex items-center gap-2.5 mb-4">
+                  <span className="w-6 h-6 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 shrink-0">
+                    <ChevronDown size={13} className={`transition-transform ${isCollapsed ? '-rotate-90' : ''}`} />
+                  </span>
+                  <span className="text-sm font-black whitespace-nowrap text-slate-800">{month}</span>
+                  <span className={`flex-1 h-px ${isCollapsed ? 'bg-slate-100' : 'bg-slate-200'}`} />
+                  <span className="text-xs text-slate-400 font-semibold shrink-0">
+                    {recs.length} record{recs.length !== 1 ? 's' : ''}
+                  </span>
+                </button>
 
-          return (
-            <div
-              key={col.id}
-              onClick={() => navigate(`/collections/${col.id}`)}
-              className="bg-white rounded-2xl border border-slate-100 shadow-sm hover:border-indigo-200 hover:shadow-md transition-all cursor-pointer group overflow-hidden"
-            >
-              <div className="p-5">
-                {/* Header */}
-                <div className="flex items-start gap-4 mb-4">
-                  <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white shrink-0 shadow-md shadow-indigo-100">
-                    <Layers size={20} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-black text-slate-800 text-base group-hover:text-indigo-700 transition-colors truncate">
-                      {col.name}
-                    </p>
-                    {col.description && (
-                      <p className="text-xs text-slate-400 mt-0.5 truncate">{col.description}</p>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      onClick={e => { e.stopPropagation(); handleDeleteCollection(col.id); }}
-                      className="w-7 h-7 rounded-lg text-slate-200 hover:text-rose-500 hover:bg-rose-50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all">
-                      <Trash2 size={13} />
-                    </button>
-                    <ChevronRight size={16} className="text-slate-300 group-hover:text-indigo-500 transition-colors" />
-                  </div>
-                </div>
-
-                {/* Stats badges */}
-                {col.recordCount > 0 && (
-                  <div className="flex items-center gap-2 flex-wrap mb-4">
-                    <span className="inline-flex items-center gap-1 bg-slate-100 rounded-full px-2.5 py-1 text-[11px] font-bold text-slate-600">
-                      <Layers size={10} /> {col.recordCount} records
-                    </span>
-                    {col.prescriptionCount > 0 && (
-                      <span className="inline-flex items-center gap-1 bg-indigo-50 border border-indigo-200 rounded-full px-2.5 py-1 text-[11px] font-bold text-indigo-700">
-                        <Stethoscope size={10} /> {col.prescriptionCount}
-                      </span>
-                    )}
-                    {col.labCount > 0 && (
-                      <span className="inline-flex items-center gap-1 bg-emerald-50 border border-emerald-200 rounded-full px-2.5 py-1 text-[11px] font-bold text-emerald-700">
-                        <FlaskConical size={10} /> {col.labCount}
-                      </span>
-                    )}
-                    {col.scanCount > 0 && (
-                      <span className="inline-flex items-center gap-1 bg-violet-50 border border-violet-200 rounded-full px-2.5 py-1 text-[11px] font-bold text-violet-700">
-                        <ScanLine size={10} /> {col.scanCount}
-                      </span>
-                    )}
-                    {col.importantCount > 0 && (
-                      <span className="inline-flex items-center gap-1 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-1 text-[11px] font-bold text-amber-700">
-                        <Star size={10} className="fill-amber-400" /> {col.importantCount}
-                      </span>
-                    )}
-                  </div>
-                )}
-
-                {/* Mini timeline preview */}
-                {col.recentRecords?.length > 0 && (
-                  <div className="mb-4">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Recent Activity</p>
-                    <div className="flex items-center gap-1 flex-wrap">
-                      {col.recentRecords.map((r, i) => {
-                        const c = JOURNEY_CATEGORY_COLORS[r.category] || JOURNEY_CATEGORY_COLORS.other;
+                {!isCollapsed && (
+                  <div className="relative pl-8 mb-2">
+                    <div className="absolute left-3 top-1 bottom-1 w-0.5 bg-slate-200 rounded-full" />
+                    <div className="space-y-3">
+                      {recs.map(r => {
+                        const m = fmt(r.category);
+                        const date = r.visitDate ? new Date(r.visitDate) : new Date(r.created_at);
                         return (
-                          <React.Fragment key={i}>
-                            <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full border ${c.bg} ${c.text} ${c.border}`}>
-                              {c.icon}
-                              <span className="max-w-[100px] truncate">{fmt(r.category).label}</span>
-                            </span>
-                            {i < col.recentRecords.length - 1 && (
-                              <ChevronRight size={10} className="text-slate-300 shrink-0" />
-                            )}
-                          </React.Fragment>
+                          <div key={r.id} className="relative">
+                            <div className={`absolute -left-8 top-3 w-9 h-9 rounded-xl flex items-center justify-center ${m.bg} ${m.color}`}><span className="scale-110">{m.icon}</span></div>
+                            <div onClick={() => navigate(`/records/${r.id}`)} onContextMenu={e => openCtx(e, r)}
+                              className="ml-2 bg-white rounded-2xl border border-slate-100 p-4 hover:border-indigo-200 hover:shadow-md transition-all cursor-pointer group">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className={`text-[10px] font-bold uppercase tracking-wider ${m.color}`}>{m.label}</span>
+                                    {r.isPinned && <Pin size={11} className="fill-indigo-400 text-indigo-400" />}
+                                    {r.isImportant && <Star size={11} className="fill-amber-400 text-amber-400" />}
+                                  </div>
+                                  <p className="font-bold text-slate-800 text-[15px] mt-0.5 group-hover:text-indigo-600 transition-colors">{r.title}</p>
+                                </div>
+                                <span className="text-xs text-slate-400 font-bold whitespace-nowrap tabular-nums">
+                                  {date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-4 mt-2 text-xs text-slate-500 flex-wrap">
+                                {r.doctorName && <span>{r.doctorName}{r.specialization ? `, ${r.specialization}` : ''}</span>}
+                                {r.hospital && <span>{r.hospital}</span>}
+                              </div>
+                              {(r.tags.length > 0 || r.mimeType) && (
+                                <div className="flex items-center gap-1.5 mt-2.5 flex-wrap">
+                                  {r.tags.map(t => <TagChip key={t.id} tag={t} />)}
+                                  <FileBadge mimeType={r.mimeType} />
+                                </div>
+                              )}
+                            </div>
+                          </div>
                         );
                       })}
                     </div>
                   </div>
                 )}
-
-                {/* Footer: dates */}
-                <div className="flex items-center justify-between text-[11px] text-slate-400 pt-3 border-t border-slate-50">
-                  {startDate && <span>Started {startDate}</span>}
-                  {lastDate && <span>Last updated {lastDate}</span>}
-                </div>
               </div>
+            );
+          })
+        )}
+      </div>
+    );
+  };
 
-              {/* Empty state inside card */}
-              {col.recordCount === 0 && (
-                <div className="px-5 pb-4">
-                  <div className="bg-slate-50 rounded-xl px-4 py-3 text-center">
-                    <p className="text-xs text-slate-400">No records yet — click to open and add records</p>
+  /* ─── Collections tab ─── */
+  const CollectionsTab = () => {
+    const importanceRank = (c: Collection) => (c.isImportant ? 2 : 0) + (c.importantCount > 0 ? 1 : 0);
+    const sorted = [...collections].sort((a, b) => {
+      const rankDiff = importanceRank(b) - importanceRank(a);
+      if (rankDiff !== 0) return rankDiff;
+      return (b.updated_at || b.created_at).localeCompare(a.updated_at || a.created_at);
+    });
+
+    const totalRecords = collections.reduce((s, c) => s + c.recordCount, 0);
+    const totalImportant = collections.reduce((s, c) => s + c.importantCount + (c.isImportant ? 1 : 0), 0);
+    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const updatedThisWeek = collections.filter(c => new Date(c.updated_at || c.created_at).getTime() >= weekAgo).length;
+
+    const dominantCategory = (col: Collection): CategoryType => {
+      const counts: [CategoryType, number][] = [
+        ['prescription', col.prescriptionCount], ['lab', col.labCount], ['scan', col.scanCount],
+      ];
+      const top = counts.reduce((a, b) => (b[1] > a[1] ? b : a));
+      return top[1] > 0 ? top[0] : 'other';
+    };
+
+    const dateRange = (col: Collection) => {
+      const started = col.created_at ? new Date(col.created_at).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }) : null;
+      return started ? `Since ${started}` : '';
+    };
+
+    const Pills = ({ col }: { col: Collection }) => (
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {col.prescriptionCount > 0 && <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-full">{col.prescriptionCount} Prescription{col.prescriptionCount !== 1 ? 's' : ''}</span>}
+        {col.labCount > 0 && <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">{col.labCount} Lab Report{col.labCount !== 1 ? 's' : ''}</span>}
+        {col.scanCount > 0 && <span className="text-[11px] font-bold text-violet-700 bg-violet-50 border border-violet-200 px-2.5 py-1 rounded-full">{col.scanCount} Scan{col.scanCount !== 1 ? 's' : ''}</span>}
+        {col.importantCount > 0 && <span className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full">{col.importantCount} Important</span>}
+      </div>
+    );
+
+    return (
+      <div className="space-y-6">
+        <div className="flex items-end justify-between flex-wrap gap-3">
+          <div>
+            <h2 className="text-2xl font-black text-slate-800 tracking-tight">Your collections</h2>
+          </div>
+          {collections.length > 0 && (
+            <button
+              onClick={() => setShowNewCol(true)}
+              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-indigo-100">
+              <Plus size={15} /> Add Collection
+            </button>
+          )}
+        </div>
+
+        {/* Stat strip */}
+        {collections.length > 0 && (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-white border border-slate-100 rounded-2xl p-4 flex items-center gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0"><Layers size={18} /></div>
+              <div><p className="text-2xl font-black text-slate-800 leading-none tabular-nums">{collections.length}</p><p className="text-[11px] text-slate-400 font-semibold mt-1">Collections</p></div>
+            </div>
+            <div className="bg-white border border-slate-100 rounded-2xl p-4 flex items-center gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center shrink-0"><FileText size={18} /></div>
+              <div><p className="text-2xl font-black text-slate-800 leading-none tabular-nums">{totalRecords}</p><p className="text-[11px] text-slate-400 font-semibold mt-1">Total records</p></div>
+            </div>
+            <div className="bg-white border border-slate-100 rounded-2xl p-4 flex items-center gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0"><Star size={16} /></div>
+              <div><p className="text-2xl font-black text-slate-800 leading-none tabular-nums">{totalImportant}</p><p className="text-[11px] text-slate-400 font-semibold mt-1">Marked important</p></div>
+            </div>
+            <div className="bg-white border border-slate-100 rounded-2xl p-4 flex items-center gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0"><Clock size={18} /></div>
+              <div><p className="text-2xl font-black text-slate-800 leading-none tabular-nums">{updatedThisWeek}</p><p className="text-[11px] text-slate-400 font-semibold mt-1">Updated this week</p></div>
+            </div>
+          </div>
+        )}
+
+        {/* Empty state */}
+        {collections.length === 0 && (
+          <div className="max-w-xl mx-auto text-center pt-12 pb-8">
+            {/* Layered-document mark */}
+            <div className="relative w-[92px] h-[74px] mx-auto mb-4">
+              <div className="absolute left-2.5 top-[18px] w-[58px] h-[46px] rounded-xl bg-indigo-50 border border-indigo-100 -rotate-[9deg]" />
+              <div className="absolute left-[23px] top-2.5 w-[58px] h-[46px] rounded-xl bg-violet-50 border border-violet-100 rotate-6" />
+              <div className="absolute left-[17px] top-[13px] w-[58px] h-[46px] rounded-xl bg-white border border-slate-200 shadow-lg shadow-indigo-100 flex items-center justify-center text-indigo-400">
+                <Layers size={20} />
+              </div>
+            </div>
+
+            <p className="font-black text-slate-800 text-xl mb-2">Group your records into a story</p>
+            <p className="text-sm text-slate-400 max-w-sm mx-auto mb-5">
+              A collection ties records to one episode of care, so the full picture — not just a single report — is what you or a doctor sees.
+            </p>
+
+            <button
+              onClick={() => setShowNewCol(true)}
+              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold px-6 py-3.5 rounded-xl transition-all shadow-md shadow-indigo-100 mx-auto mb-6">
+              <Plus size={16} /> Add Collection
+            </button>
+
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">Or start from a common one</p>
+            <div className="grid grid-cols-3 gap-2.5">
+              {[
+                { label: 'Chronic Condition', icon: <Stethoscope size={16} />, color: 'text-indigo-600' },
+                { label: 'Surgery / Procedure', icon: <ScanLine size={16} />, color: 'text-violet-600' },
+                { label: 'Annual Checkup', icon: <FlaskConical size={16} />, color: 'text-emerald-600' },
+              ].map(s => (
+                <button
+                  key={s.label}
+                  onClick={() => { setNewColName(s.label); setShowNewCol(true); }}
+                  className="flex items-center gap-2 bg-white border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/50 rounded-xl px-4 py-3.5 text-sm font-bold text-slate-700 transition-all">
+                  <span className={s.color}>{s.icon}</span>
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Collections grid — uniform size, sorted by most recently opened/updated */}
+        {sorted.length > 0 && (
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {sorted.map(col => {
+              const cat = dominantCategory(col);
+              return (
+                <div key={col.id} onClick={() => navigate(`/collections/${col.id}`)}
+                  className="relative bg-white border border-slate-100 rounded-2xl p-6 hover:border-indigo-200 hover:shadow-md transition-all cursor-pointer group flex flex-col">
+                  <div className="absolute top-5 right-5 flex items-center gap-1">
+                    <button
+                      onClick={e => { e.stopPropagation(); handleToggleCollectionImportant(col.id); }}
+                      title={col.isImportant ? 'Marked important' : 'Mark as important'}
+                      className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all ${
+                        col.isImportant
+                          ? 'text-amber-500 hover:bg-amber-50'
+                          : 'text-slate-300 hover:text-amber-400 hover:bg-amber-50'
+                      }`}>
+                      <Star size={14} className={col.isImportant ? 'fill-amber-400' : ''} />
+                    </button>
+                    <button
+                      onClick={e => { e.stopPropagation(); handleDeleteCollection(col.id); }}
+                      className="w-7 h-7 rounded-lg text-slate-300 hover:text-rose-500 hover:bg-rose-50 flex items-center justify-center transition-all">
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                  <div className="flex gap-3.5 pr-16">
+                    <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${col.recordCount === 0 ? 'bg-indigo-50 text-indigo-400' : `${fmt(cat).bg} ${fmt(cat).color}`}`}>
+                      <span className="scale-125">{col.recordCount === 0 ? <Layers size={13} /> : fmt(cat).icon}</span>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-black text-slate-800 truncate">{col.name}</p>
+                      <p className="text-sm font-semibold text-slate-400 mt-0.5">{col.recordCount} record{col.recordCount !== 1 ? 's' : ''}</p>
+                      {col.description && <p className="text-xs text-slate-400 mt-1 truncate">{col.description}</p>}
+                    </div>
+                  </div>
+                  {col.recordCount > 0 ? (
+                    <div className="mt-4"><Pills col={col} /></div>
+                  ) : (
+                    <div className="mt-4 bg-slate-50 rounded-xl px-4 py-3">
+                      <p className="text-xs text-slate-400">No records yet — open to add the first one.</p>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between mt-auto pt-4 border-t border-slate-50">
+                    <span className="text-[11px] text-slate-400 font-medium">{dateRange(col)}</span>
+                    <span className="text-xs font-bold text-indigo-600 group-hover:underline">View Collection</span>
                   </div>
                 </div>
-              )}
+              );
+            })}
+          </div>
+        )}
+
+        {/* Create Collection modal */}
+        {showNewCol && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
+              <div className="flex items-center justify-between px-7 py-5 border-b border-slate-100">
+                <div>
+                  <h2 className="font-black text-slate-800 text-lg">Create Collection</h2>
+                  <p className="text-xs text-slate-400 mt-0.5">Group records from one episode of care together</p>
+                </div>
+                <button
+                  onClick={() => { setShowNewCol(false); setNewColName(''); setNewColDesc(''); }}
+                  className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 transition-colors shrink-0">
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="px-7 py-6 space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1.5">Name <span className="text-rose-500">*</span></label>
+                  <input
+                    value={newColName}
+                    onChange={e => setNewColName(e.target.value)}
+                    placeholder="e.g. Diabetes Management, Knee Surgery 2026"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                    autoFocus
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1.5">Description</label>
+                  <input
+                    value={newColDesc}
+                    onChange={e => setNewColDesc(e.target.value)}
+                    placeholder="What health episode does this track?"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                  />
+                </div>
+
+                <div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Or pick a common one</p>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { label: 'Chronic Condition', icon: <Stethoscope size={13} /> },
+                      { label: 'Surgery / Procedure', icon: <ScanLine size={13} /> },
+                      { label: 'Annual Checkup', icon: <FlaskConical size={13} /> },
+                    ].map(s => (
+                      <button key={s.label} type="button" onClick={() => setNewColName(s.label)}
+                        className={`flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-lg border transition-all ${newColName === s.label ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300'}`}>
+                        {s.icon} {s.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={() => { setShowNewCol(false); setNewColName(''); setNewColDesc(''); }}
+                    className="flex-1 py-3 rounded-xl border border-slate-200 text-slate-600 font-bold text-sm hover:bg-slate-50 transition-colors">
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleCreateCollection}
+                    disabled={!newColName.trim()}
+                    className="flex-1 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-100 disabled:text-slate-400 text-white font-bold text-sm transition-all shadow-md shadow-indigo-100 disabled:shadow-none">
+                    Create & Open
+                  </button>
+                </div>
+              </div>
             </div>
-          );
-        })}
+          </div>
+        )}
       </div>
-    </div>
-  );
+    );
+  };
 
   /* ─── Loading ─── */
   if (loading) return (
@@ -1008,9 +1267,13 @@ export default function Records() {
               <p className="text-xs text-slate-400 mt-0.5">{records.filter(r => !r.isArchived).length} active · {pinnedRecords.length} pinned</p>
             </div>
           </div>
-          <button onClick={() => openAdd()} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-indigo-100 active:scale-95">
-            <Plus size={16} /> Add Record
-          </button>
+          {activeTab !== 'collections' && activeTab !== 'timeline' && (
+            <button
+              onClick={() => openAdd(activeTab === 'prescriptions' ? 'prescription' : activeTab === 'lab' ? 'lab' : activeTab === 'scans' ? 'scan' : undefined)}
+              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-indigo-100 active:scale-95">
+              <Plus size={16} /> Add Record
+            </button>
+          )}
         </div>
         <div className="max-w-7xl mx-auto px-6 flex gap-1 pb-0 overflow-x-auto">
           {TABS.map(t => (
@@ -1106,12 +1369,17 @@ export default function Records() {
                     <div className="flex items-center gap-1.5 mb-1"><Phone size={14} className="text-emerald-500" /><span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Emergency Contact</span></div>
                     {summary?.emergencyContact ? (() => {
                       const { name, phone } = parseEmergencyContact(summary.emergencyContact);
+                      const hasPhone = phone.length >= 5;
+                      const phoneLabel = phone.length === 10 ? `${phone.slice(0, 5)} ${phone.slice(5)}` : phone;
+                      if (!name && !hasPhone) return <p className="text-sm font-medium text-slate-300 italic">Not specified</p>;
                       return (
-                        <div className="flex items-center flex-wrap gap-2">
-                          <span className="text-sm font-medium text-slate-800 truncate">{name || 'Emergency contact'}</span>
-                          {phone.length === 10 && (
-                            <a href={`tel:+91${phone}`} onClick={e => e.stopPropagation()} className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-1 rounded-lg hover:bg-emerald-100 transition-colors shrink-0">
-                              <Phone size={11} /> {phone.slice(0, 5)} {phone.slice(5)}
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          {name && <span className="text-sm font-semibold text-slate-800 truncate min-w-0">{name}</span>}
+                          {name && hasPhone && <span className="text-slate-300 shrink-0">—</span>}
+                          {hasPhone && (
+                            <a href={`tel:+91${phone}`} onClick={e => e.stopPropagation()}
+                              className="inline-flex items-center text-sm font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md tabular-nums shrink-0 hover:bg-indigo-100 transition-colors">
+                              {phoneLabel}
                             </a>
                           )}
                         </div>
@@ -1167,69 +1435,46 @@ export default function Records() {
 
         {/* PRESCRIPTIONS */}
         {activeTab === 'prescriptions' && (
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-              <div className="flex items-center gap-2"><div className="w-8 h-8 bg-indigo-50 rounded-lg flex items-center justify-center text-indigo-600"><Stethoscope size={16} /></div><h2 className="font-bold text-slate-800">Prescriptions</h2></div>
-              <button onClick={() => openAdd('prescription')} className="flex items-center gap-1.5 text-sm font-bold text-indigo-600 hover:bg-indigo-50 px-3 py-2 rounded-xl transition-colors"><Plus size={15} /> Add</button>
-            </div>
-            <div className="px-6 pt-4"><Toolbar /></div>
-            {renderTable(prescriptions, 'Prescriptions', 'prescription')}
+          <div>
+            {Toolbar()}
+            {renderPrescriptionList(prescriptions)}
           </div>
         )}
 
         {/* LAB REPORTS */}
         {activeTab === 'lab' && (
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-              <div className="flex items-center gap-2"><div className="w-8 h-8 bg-emerald-50 rounded-lg flex items-center justify-center text-emerald-600"><FlaskConical size={16} /></div><h2 className="font-bold text-slate-800">Lab Reports</h2></div>
-              <button onClick={() => openAdd('lab')} className="flex items-center gap-1.5 text-sm font-bold text-emerald-600 hover:bg-emerald-50 px-3 py-2 rounded-xl transition-colors"><Plus size={15} /> Add</button>
-            </div>
-            <div className="px-6 pt-4"><Toolbar /></div>
-            {renderTable(labReports, 'Lab Reports', 'lab')}
+          <div>
+            {Toolbar()}
+            {renderLabReportList(labReports)}
           </div>
         )}
 
         {/* SCANS */}
         {activeTab === 'scans' && (
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-              <div className="flex items-center gap-2"><div className="w-8 h-8 bg-violet-50 rounded-lg flex items-center justify-center text-violet-600"><ScanLine size={16} /></div><h2 className="font-bold text-slate-800">Scans & Imaging</h2></div>
-              <button onClick={() => openAdd('scan')} className="flex items-center gap-1.5 text-sm font-bold text-violet-600 hover:bg-violet-50 px-3 py-2 rounded-xl transition-colors"><Plus size={15} /> Add</button>
-            </div>
-            <div className="px-6 pt-4"><Toolbar /></div>
-            {renderTable(scans, 'Scans', 'scan')}
+          <div>
+            {Toolbar()}
+            {renderScanGallery(scans)}
           </div>
         )}
 
         {/* COLLECTIONS */}
-        {activeTab === 'collections' && (
-          <div>
-            <div className="flex items-center gap-2 mb-6">
-              <div className="w-8 h-8 bg-violet-50 rounded-lg flex items-center justify-center text-violet-600"><Layers size={16} /></div>
-              <h2 className="font-bold text-slate-800 text-lg">Collections</h2>
-            </div>
-            <CollectionsTab />
-          </div>
-        )}
+        {activeTab === 'collections' && CollectionsTab()}
 
         {/* TIMELINE */}
         {activeTab === 'timeline' && (
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-              <div className="flex items-center gap-2"><div className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center text-slate-600"><Clock size={16} /></div><h2 className="font-bold text-slate-800">Medical Timeline</h2></div>
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-slate-400">{timelineRecords.length} records</span>
-                <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
-                  {(['month', 'year'] as const).map(mode => (
-                    <button key={mode} onClick={() => setTimelineGroupMode(mode)}
-                      className={`px-3 py-1.5 rounded-md text-xs font-bold capitalize transition-all ${timelineGroupMode === mode ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-                      {mode}wise
-                    </button>
-                  ))}
-                </div>
+          <div>
+            <div className="flex items-end justify-between flex-wrap gap-3 mb-6">
+              <div>
+                <h2 className="text-2xl font-black text-slate-800 tracking-tight">Timeline</h2>
+                <p className="text-sm text-slate-400 mt-1">{filteredTimelineRecords.length} record{filteredTimelineRecords.length !== 1 ? 's' : ''}{timelineCategory ? ` · ${CATEGORY_META[timelineCategory].label}` : ''}</p>
               </div>
             </div>
-            <div className="p-6"><TimelineView /></div>
+            <div className="flex items-start gap-6">
+              {TimelineRail()}
+              <div className="flex-1 min-w-0 bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+                {TimelineView()}
+              </div>
+            </div>
           </div>
         )}
       </div>

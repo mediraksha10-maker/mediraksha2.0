@@ -4,6 +4,7 @@ import {
   ArrowLeft, Plus, Search, X, Stethoscope, FlaskConical, ScanLine,
   ClipboardList, FileText, Star, Pin, Link2, Hash, Upload, CheckCircle2,
   Trash2, Calendar, ChevronRight, Layers, FileImage, FileArchive, AlertCircle,
+  Pencil,
 } from 'lucide-react';
 import api from '../api/Api';
 import DateField from '../components/DateField';
@@ -33,6 +34,7 @@ interface Collection {
   id: number;
   name: string;
   description: string | null;
+  isImportant: boolean;
   created_at: string;
   updated_at: string;
   records: CollectionRecord[];
@@ -104,22 +106,6 @@ const tagColor = (c: string) => TAG_COLOR_MAP[c] || TAG_COLOR_MAP.indigo;
 const fmt = (cat: string) => CATEGORY_META[cat] || CATEGORY_META.other;
 
 /* ─── Helpers ─── */
-function groupByMonth(records: CollectionRecord[]): [string, CollectionRecord[]][] {
-  const groups = new Map<string, CollectionRecord[]>();
-  for (const r of records) {
-    const date = r.visitDate ? new Date(r.visitDate) : new Date(r.created_at);
-    const key = date.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key)!.push(r);
-  }
-  return Array.from(groups.entries());
-}
-
-function formatLongDate(d: string | null): string {
-  if (!d) return '';
-  return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
-}
-
 function formatShortMonth(d: string): string {
   return new Date(d).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
 }
@@ -135,6 +121,13 @@ export default function CollectionDetail() {
   const [error, setError] = useState('');
 
   const [searchQ, setSearchQ] = useState('');
+
+  /* edit collection name/description */
+  const [showEditCol, setShowEditCol] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editDesc, setEditDesc] = useState('');
+  const [editError, setEditError] = useState('');
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   /* add new record */
   const [showAddNew, setShowAddNew] = useState(false);
@@ -190,7 +183,12 @@ export default function CollectionDetail() {
     );
   }, [collection, searchQ]);
 
-  const monthGroups = useMemo(() => groupByMonth(filteredRecords), [filteredRecords]);
+  const sortedRecords = useMemo(() =>
+    [...filteredRecords].sort((a, b) => {
+      if (a.isImportant !== b.isImportant) return a.isImportant ? -1 : 1;
+      const av = a.visitDate || a.created_at, bv = b.visitDate || b.created_at;
+      return bv.localeCompare(av);
+    }), [filteredRecords]);
 
   const stats = useMemo(() => {
     const recs = collection?.records || [];
@@ -220,6 +218,30 @@ export default function CollectionDetail() {
     } catch {}
   };
 
+  /* ── star / mark important ── */
+  const handleToggleImportant = async (recordId: number) => {
+    try {
+      const res = await api.patch(`/user/records/${recordId}/important`);
+      if (res.data?.success) {
+        setCollection(prev => prev ? {
+          ...prev,
+          records: prev.records.map(r => r.id === recordId ? { ...r, isImportant: res.data.isImportant } : r),
+        } : prev);
+      }
+    } catch {}
+  };
+
+  /* ── star / mark collection important ── */
+  const handleToggleCollectionImportant = async () => {
+    if (!id) return;
+    try {
+      const res = await api.patch(`/user/collections/${id}/important`);
+      if (res.data?.success) {
+        setCollection(prev => prev ? { ...prev, isImportant: res.data.isImportant } : prev);
+      }
+    } catch {}
+  };
+
   /* ── add new record ── */
   const resetAddForm = () => {
     setAddStep(1); setSelCategory('prescription');
@@ -233,6 +255,29 @@ export default function CollectionDetail() {
     if (!id) return;
     const colRes = await api.get(`/user/collections/${id}`);
     if (colRes.data?.success) setCollection(colRes.data.data);
+  };
+
+  /* ── edit collection ── */
+  const openEditCol = () => {
+    if (!collection) return;
+    setEditName(collection.name);
+    setEditDesc(collection.description || '');
+    setEditError('');
+    setShowEditCol(true);
+  };
+
+  const handleSaveEditCol = async () => {
+    if (!id || !editName.trim()) { setEditError('Name is required.'); return; }
+    setIsSavingEdit(true); setEditError('');
+    try {
+      const res = await api.patch(`/user/collections/${id}`, { name: editName.trim(), description: editDesc.trim() || null });
+      if (res.data?.success) {
+        setCollection(prev => prev ? { ...prev, name: res.data.data.name, description: res.data.data.description } : prev);
+        setShowEditCol(false);
+      }
+    } catch (e: any) {
+      setEditError(e.response?.data?.message || 'Failed to save changes. Please try again.');
+    } finally { setIsSavingEdit(false); }
   };
 
   const handleSubmitNew = async () => {
@@ -315,7 +360,7 @@ export default function CollectionDetail() {
     <div className="min-h-screen bg-slate-50 flex items-center justify-center">
       <div className="flex flex-col items-center gap-3">
         <div className="w-9 h-9 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
-        <p className="text-sm text-slate-400 font-medium">Loading medical journey...</p>
+        <p className="text-sm text-slate-400 font-medium">Loading collection...</p>
       </div>
     </div>
   );
@@ -344,7 +389,26 @@ export default function CollectionDetail() {
               <ArrowLeft size={18} />
             </button>
             <div className="flex-1 min-w-0">
-              <h1 className="text-xl font-black text-slate-800 tracking-tight truncate">{collection.name}</h1>
+              <div className="flex items-center justify-between gap-3">
+                <h1 className="text-2xl font-black text-slate-800 tracking-tight truncate">{collection.name}</h1>
+                <div className="flex items-center gap-1.5 shrink-0 mt-2.5">
+                  <button
+                    onClick={handleToggleCollectionImportant}
+                    title={collection.isImportant ? 'Marked important' : 'Mark as important'}
+                    className={`w-8 h-8 rounded-full flex items-center justify-center border transition-colors ${
+                      collection.isImportant
+                        ? 'text-amber-500 bg-amber-50 border-amber-200 hover:bg-amber-100'
+                        : 'text-slate-300 bg-white border-slate-200 hover:text-amber-400 hover:bg-amber-50 hover:border-amber-200'
+                    }`}>
+                    <Star size={14} className={collection.isImportant ? 'fill-amber-400' : ''} />
+                  </button>
+                  <button
+                    onClick={openEditCol}
+                    className="flex items-center gap-1.5 text-xs font-bold text-sky-700 bg-sky-50 border border-sky-200 hover:bg-sky-100 hover:border-sky-300 px-3 py-1.5 rounded-full transition-colors">
+                    <Pencil size={12} /> Edit
+                  </button>
+                </div>
+              </div>
               {collection.description && (
                 <p className="text-sm text-slate-400 mt-0.5 truncate">{collection.description}</p>
               )}
@@ -355,7 +419,7 @@ export default function CollectionDetail() {
           <div className="flex items-center gap-2 flex-wrap pb-4">
             <span className="inline-flex items-center gap-1.5 bg-slate-100 rounded-full px-3 py-1.5 text-xs font-bold text-slate-700">
               <Layers size={12} className="text-slate-500" />
-              {stats.total} Records
+              {stats.total} record{stats.total !== 1 ? 's' : ''}
             </span>
             {stats.prescription > 0 && (
               <span className="inline-flex items-center gap-1.5 bg-indigo-50 border border-indigo-200 rounded-full px-3 py-1.5 text-xs font-bold text-indigo-700">
@@ -393,53 +457,77 @@ export default function CollectionDetail() {
       <div className="max-w-4xl mx-auto px-6 py-6">
 
         {/* Toolbar */}
-        <div className="flex items-center gap-3 mb-8 flex-wrap">
-          <div className="relative flex-1 min-w-52">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        {collection.records.length === 0 ? (
+          <div className="relative max-w-lg mx-auto mt-2 mb-14">
+            <Search size={15} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               value={searchQ}
               onChange={e => setSearchQ(e.target.value)}
-              placeholder="Search records in this journey…"
-              className="w-full pl-9 pr-8 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+              placeholder="Search records in this collection…"
+              className="w-full pl-10 pr-9 py-3 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
             />
             {searchQ && (
-              <button onClick={() => setSearchQ('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+              <button onClick={() => setSearchQ('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
                 <X size={13} />
               </button>
             )}
           </div>
-          <button
-            onClick={() => { resetAddForm(); setShowAddNew(true); }}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-indigo-100 active:scale-95 whitespace-nowrap">
-            <Plus size={15} /> Add Record
-          </button>
-          <button
-            onClick={openAddExisting}
-            className="flex items-center gap-2 bg-white border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 text-sm font-bold px-4 py-2.5 rounded-xl transition-all whitespace-nowrap">
-            <Link2 size={15} /> Add Existing
-          </button>
-        </div>
+        ) : (
+          <div className="flex items-center gap-3 mb-8 flex-wrap">
+            <div className="relative flex-1 min-w-52">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={searchQ}
+                onChange={e => setSearchQ(e.target.value)}
+                placeholder="Search records in this collection…"
+                className="w-full pl-9 pr-8 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+              />
+              {searchQ && (
+                <button onClick={() => setSearchQ('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+            <button
+              onClick={() => { resetAddForm(); setShowAddNew(true); }}
+              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-indigo-100 active:scale-95 whitespace-nowrap">
+              <Plus size={15} /> Add Record
+            </button>
+            <button
+              onClick={openAddExisting}
+              className="flex items-center gap-2 bg-white border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 text-sm font-bold px-4 py-2.5 rounded-xl transition-all whitespace-nowrap">
+              <Link2 size={15} /> Add Existing
+            </button>
+          </div>
+        )}
 
         {/* Empty State */}
         {collection.records.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-24 text-center">
-            <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-indigo-50 to-violet-50 border border-indigo-100 flex items-center justify-center mb-5">
-              <Layers size={32} className="text-indigo-300" />
+          <div className="flex flex-col items-center justify-center pb-16 text-center">
+            {/* Layered-document mark */}
+            <div className="relative w-[100px] h-20 mb-7">
+              <div className="absolute left-3 top-5 w-16 h-[50px] rounded-xl bg-indigo-50 border border-indigo-100 -rotate-[9deg]" />
+              <div className="absolute left-6 top-2.5 w-16 h-[50px] rounded-xl bg-violet-50 border border-violet-100 rotate-6" />
+              <div className="absolute left-[18px] top-3.5 w-16 h-[50px] rounded-xl bg-white border border-slate-200 shadow-lg shadow-indigo-100 flex items-center justify-center text-indigo-400">
+                <Layers size={22} />
+              </div>
             </div>
-            <p className="font-black text-slate-700 text-xl mb-2">No records yet</p>
-            <p className="text-sm text-slate-400 mb-8 max-w-xs">
-              Start building this medical journey by adding your first record.
+
+            <p className="font-black text-slate-800 text-xl mb-2.5">Add your first record</p>
+            <p className="text-sm text-slate-400 mb-8 max-w-sm mx-auto leading-relaxed">
+              Add related reports, prescriptions, and medical records to keep your care journey organized in one place.
             </p>
             <div className="flex flex-col sm:flex-row gap-3">
               <button
                 onClick={() => { resetAddForm(); setShowAddNew(true); }}
-                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold px-6 py-3 rounded-xl transition-all shadow-md shadow-indigo-100">
+                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold px-6 py-3 rounded-xl transition-all shadow-md shadow-indigo-100 active:scale-95">
                 <Plus size={16} /> Add New Record
               </button>
               <button
                 onClick={openAddExisting}
-                className="flex items-center gap-2 bg-white border border-slate-200 hover:border-indigo-300 text-slate-700 text-sm font-bold px-6 py-3 rounded-xl transition-all">
+                className="flex items-center gap-2 bg-white border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/50 text-slate-700 text-sm font-bold px-6 py-3 rounded-xl transition-all">
                 <Link2 size={16} /> Add Existing Record
               </button>
             </div>
@@ -454,138 +542,178 @@ export default function CollectionDetail() {
           </div>
         )}
 
-        {/* Monthly Timeline */}
+        {/* Records timeline */}
         {filteredRecords.length > 0 && (
-          <div className="space-y-10">
-            {monthGroups.map(([month, recs]) => (
-              <div key={month}>
-                {/* Month divider */}
-                <div className="flex items-center gap-3 mb-5">
-                  <div className="flex items-center gap-2 bg-slate-800 text-white rounded-full px-4 py-1.5 shrink-0">
-                    <Calendar size={12} />
-                    <span className="text-xs font-bold tracking-wide">{month}</span>
-                  </div>
-                  <div className="flex-1 h-px bg-slate-200" />
-                  <span className="text-xs text-slate-400 font-medium shrink-0">
-                    {recs.length} record{recs.length !== 1 ? 's' : ''}
-                  </span>
-                </div>
+          <div className="relative pl-9">
+            {/* Vertical timeline line */}
+            <div className="absolute left-[13px] top-1 bottom-1 w-0.5 bg-slate-200 rounded-full" />
 
-                {/* Records in this month */}
-                <div className="relative pl-8">
-                  {/* Vertical timeline line */}
-                  <div className="absolute left-[14px] top-3 bottom-3 w-0.5 bg-slate-200 rounded-full" />
+            <div className="space-y-3">
+              {sortedRecords.map((r) => {
+                const m = fmt(r.category);
+                const shortDate = r.visitDate || r.created_at
+                  ? new Date(r.visitDate || r.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+                  : null;
+                return (
+                  <div key={r.id} className="relative">
+                    {/* Timeline node */}
+                    <div className={`absolute -left-[15px] top-0.5 w-10 h-10 rounded-[13px] border-2 border-white ring-1 ring-slate-200 flex items-center justify-center ${m.bg} ${m.color}`}>
+                      <div className="[&>svg]:w-[17px] [&>svg]:h-[17px]">{m.icon}</div>
+                    </div>
 
-                  <div className="space-y-3">
-                    {recs.map((r) => {
-                      const m = fmt(r.category);
-                      return (
-                        <div key={r.id} className="relative">
-                          {/* Timeline node dot */}
-                          <div className={`absolute -left-8 top-[22px] w-[18px] h-[18px] rounded-full border-2 border-white shadow-sm flex items-center justify-center z-10 ${m.bg} ${m.border} border`}>
-                            <div className={`${m.color} [&>svg]:w-2.5 [&>svg]:h-2.5`}>{m.icon}</div>
+                    {/* Record Card */}
+                    <div
+                      onClick={() => navigate(`/records/${r.id}`)}
+                      className="ml-8 bg-white border border-slate-100 rounded-2xl p-4 hover:border-indigo-200 hover:shadow-md transition-all cursor-pointer group"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          {/* Category + record ID + flags */}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`text-[10.5px] font-extrabold uppercase tracking-wide ${m.color}`}>{m.label}</span>
+                            <span className={`font-mono text-[10.5px] font-bold px-1.5 py-px rounded-md border ${m.color} ${m.bg} ${m.border}`}>
+                              {r.recordId}
+                            </span>
+                            {r.isPinned && <Pin size={12} className="fill-indigo-400 text-indigo-400 shrink-0" />}
                           </div>
 
-                          {/* Record Card */}
-                          <div
-                            onClick={() => navigate(`/records/${r.id}`)}
-                            className="bg-white border border-slate-100 rounded-2xl p-4 hover:border-indigo-200 hover:shadow-md transition-all cursor-pointer group"
-                          >
-                            <div className="flex items-start gap-3">
-                              <div className="flex-1 min-w-0">
-                                {/* Top badge row */}
-                                <div className="flex items-center gap-2 flex-wrap mb-1.5">
-                                  {r.isImportant && (
-                                    <Star size={12} className="fill-amber-400 text-amber-400 shrink-0" />
-                                  )}
-                                  {r.isPinned && (
-                                    <Pin size={12} className="fill-indigo-400 text-indigo-400 shrink-0" />
-                                  )}
-                                  <span className={`font-mono text-[11px] font-bold px-2 py-0.5 rounded-md border ${m.color} ${m.bg} ${m.border}`}>
-                                    {r.recordId}
+                          {/* Title */}
+                          <p className="font-bold text-slate-800 text-[15px] mt-1 group-hover:text-indigo-700 transition-colors">
+                            {r.title}
+                          </p>
+
+                          {/* Meta row */}
+                          <div className="flex items-center gap-4 mt-2 text-xs text-slate-500 flex-wrap">
+                            {r.doctorName && (
+                              <span>{r.doctorName}{r.specialization ? `, ${r.specialization}` : ''}</span>
+                            )}
+                            {r.hospital && <span>{r.hospital}</span>}
+                          </div>
+
+                          {/* Tags */}
+                          {r.tags?.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5 mt-2.5">
+                              {r.tags.slice(0, 5).map(t => {
+                                const c = tagColor(t.color);
+                                return (
+                                  <span
+                                    key={t.id}
+                                    className={`inline-flex items-center gap-0.5 text-[10px] font-bold px-2 py-0.5 rounded-full border ${c.bg} ${c.text} ${c.border}`}
+                                  >
+                                    <Hash size={8} />{t.name}
                                   </span>
-                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${m.bg} ${m.color}`}>
-                                    {m.label}
-                                  </span>
-                                </div>
-
-                                {/* Title */}
-                                <p className="font-bold text-slate-800 text-sm group-hover:text-indigo-700 transition-colors mb-1.5">
-                                  {r.title}
-                                </p>
-
-                                {/* Meta row */}
-                                <div className="flex items-center gap-3 text-xs text-slate-400 mb-2 flex-wrap">
-                                  {r.doctorName && (
-                                    <span className="flex items-center gap-1">
-                                      <Stethoscope size={11} className="text-slate-300" />
-                                      {r.doctorName}
-                                    </span>
-                                  )}
-                                  {(r.visitDate || r.created_at) && (
-                                    <span className="flex items-center gap-1">
-                                      <Calendar size={11} className="text-slate-300" />
-                                      {formatLongDate(r.visitDate || r.created_at)}
-                                    </span>
-                                  )}
-                                  {r.hospital && <span className="truncate">{r.hospital}</span>}
-                                </div>
-
-                                {/* Tags */}
-                                {r.tags?.length > 0 && (
-                                  <div className="flex flex-wrap gap-1 mb-2">
-                                    {r.tags.slice(0, 5).map(t => {
-                                      const c = tagColor(t.color);
-                                      return (
-                                        <span
-                                          key={t.id}
-                                          className={`inline-flex items-center gap-0.5 text-[10px] font-bold px-2 py-0.5 rounded-full border ${c.bg} ${c.text} ${c.border}`}
-                                        >
-                                          <Hash size={8} />{t.name}
-                                        </span>
-                                      );
-                                    })}
-                                  </div>
-                                )}
-
-                                {/* File / Connection badges */}
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  {r.originalFileName && (
-                                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold bg-slate-50 border border-slate-200 text-slate-500 px-2 py-0.5 rounded-full">
-                                      {r.mimeType?.startsWith('image/') ? <FileImage size={9} /> : <FileArchive size={9} />}
-                                      {r.mimeType === 'application/pdf' ? 'PDF' : r.mimeType?.startsWith('image/') ? 'Image' : 'File'}
-                                    </span>
-                                  )}
-                                  {r.connectionCount > 0 && (
-                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">
-                                      <Link2 size={9} /> {r.connectionCount} linked
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-
-                              {/* Action: remove + chevron */}
-                              <div className="flex items-center gap-1 shrink-0 mt-0.5">
-                                <button
-                                  onClick={e => { e.stopPropagation(); handleRemove(r.id); }}
-                                  className="w-7 h-7 rounded-lg text-slate-200 hover:text-rose-500 hover:bg-rose-50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all"
-                                >
-                                  <Trash2 size={13} />
-                                </button>
-                                <ChevronRight size={15} className="text-slate-300 group-hover:text-indigo-400 transition-colors" />
-                              </div>
+                                );
+                              })}
                             </div>
-                          </div>
+                          )}
+
+                          {/* File / Connection badges */}
+                          {(r.originalFileName || r.connectionCount > 0) && (
+                            <div className="flex items-center gap-2 flex-wrap mt-2">
+                              {r.originalFileName && (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-semibold bg-slate-50 border border-slate-200 text-slate-500 px-2 py-0.5 rounded-full">
+                                  {r.mimeType?.startsWith('image/') ? <FileImage size={9} /> : <FileArchive size={9} />}
+                                  {r.mimeType === 'application/pdf' ? 'PDF' : r.mimeType?.startsWith('image/') ? 'Image' : 'File'}
+                                </span>
+                              )}
+                              {r.connectionCount > 0 && (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">
+                                  <Link2 size={9} /> {r.connectionCount} linked
+                                </span>
+                              )}
+                            </div>
+                          )}
                         </div>
-                      );
-                    })}
+
+                        {/* Date + star + remove */}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            onClick={e => { e.stopPropagation(); handleToggleImportant(r.id); }}
+                            title={r.isImportant ? 'Marked important' : 'Mark as important'}
+                            className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all ${
+                              r.isImportant
+                                ? 'text-amber-500 hover:bg-amber-50'
+                                : 'text-slate-200 hover:text-amber-400 hover:bg-amber-50 opacity-0 group-hover:opacity-100'
+                            }`}
+                          >
+                            <Star size={14} className={r.isImportant ? 'fill-amber-400' : ''} />
+                          </button>
+                          <button
+                            onClick={e => { e.stopPropagation(); handleRemove(r.id); }}
+                            className="w-7 h-7 rounded-lg text-slate-200 hover:text-rose-500 hover:bg-rose-50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                          {shortDate && (
+                            <span className="text-xs text-slate-400 font-bold whitespace-nowrap tabular-nums">{shortDate}</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-            ))}
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
+
+      {/* ══════════════════════════════════════
+          EDIT COLLECTION MODAL
+      ══════════════════════════════════════ */}
+      {showEditCol && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="flex items-center justify-between px-7 py-5 border-b border-slate-100">
+              <h2 className="font-black text-slate-800 text-lg">Edit Collection</h2>
+              <button
+                onClick={() => setShowEditCol(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 transition-colors">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="px-7 py-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1.5">
+                  Name <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={e => setEditName(e.target.value)}
+                  placeholder="e.g., Diabetes Management"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1.5">Description</label>
+                <textarea
+                  value={editDesc}
+                  onChange={e => setEditDesc(e.target.value)}
+                  rows={3}
+                  placeholder="What this collection is for…"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all resize-none"
+                />
+              </div>
+              {editError && (
+                <p className="text-xs text-rose-600 bg-rose-50 border border-rose-200 px-3 py-2 rounded-lg font-medium">{editError}</p>
+              )}
+              <div className="flex gap-3 pt-2">
+                <button onClick={() => setShowEditCol(false)} className="flex-1 py-3 rounded-xl border border-slate-200 text-slate-600 font-bold text-sm hover:bg-slate-50 transition-colors">
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveEditCol}
+                  disabled={isSavingEdit || !editName.trim()}
+                  className="flex-1 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-100 disabled:text-slate-400 text-white font-bold text-sm transition-all shadow-md shadow-indigo-100 disabled:shadow-none">
+                  {isSavingEdit ? 'Saving…' : 'Save Changes'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ══════════════════════════════════════
           ADD NEW RECORD MODAL
@@ -597,7 +725,7 @@ export default function CollectionDetail() {
             <div className="flex items-center justify-between px-7 py-5 border-b border-slate-100 shrink-0">
               <div>
                 <h2 className="font-black text-slate-800 text-lg">
-                  {saveSuccess ? 'Added to Journey!' : addStep === 1 ? 'Select Record Type' : `New ${CATEGORY_META[selCategory]?.label}`}
+                  {saveSuccess ? 'Added to Collection!' : addStep === 1 ? 'Select Record Type' : `New ${CATEGORY_META[selCategory]?.label}`}
                 </h2>
                 {!saveSuccess && (
                   <div className="flex items-center gap-1.5 mt-1">
@@ -624,7 +752,7 @@ export default function CollectionDetail() {
                     <CheckCircle2 size={32} className="text-emerald-600" />
                   </div>
                   <p className="font-bold text-slate-800 mb-1">Record created and added!</p>
-                  <p className="text-sm text-slate-400 mt-2 mb-6">The new record is now part of this medical journey.</p>
+                  <p className="text-sm text-slate-400 mt-2 mb-6">The new record is now part of this collection.</p>
                   <div className="flex flex-col gap-2">
                     <button onClick={() => { setShowAddNew(false); resetAddForm(); }}
                       className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm transition-all">
@@ -807,7 +935,7 @@ export default function CollectionDetail() {
                       onClick={handleSubmitNew}
                       disabled={isSubmitting || !fTitle.trim()}
                       className="flex-1 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-100 disabled:text-slate-400 text-white font-bold text-sm transition-all shadow-md shadow-indigo-100 disabled:shadow-none">
-                      {isSubmitting ? 'Saving…' : 'Save to Journey'}
+                      {isSubmitting ? 'Saving…' : 'Save to Collection'}
                     </button>
                   </div>
                 </div>
@@ -826,7 +954,7 @@ export default function CollectionDetail() {
             <div className="flex items-center justify-between px-7 py-5 border-b border-slate-100 shrink-0">
               <div>
                 <h2 className="font-black text-slate-800 text-lg">Add Existing Record</h2>
-                <p className="text-xs text-slate-400 mt-0.5">Select records to include in this journey</p>
+                <p className="text-xs text-slate-400 mt-0.5">Select records to include in this collection</p>
               </div>
               <button
                 onClick={() => setShowAddExisting(false)}

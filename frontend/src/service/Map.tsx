@@ -6,7 +6,7 @@ import {
   ArrowLeft, BedDouble, MapPin, Navigation, LocateFixed, Search, Building2,
   Stethoscope, Phone, Filter, X, Star, Clock, ChevronRight, FlaskConical,
   Pill, Package, Users, Scale, CheckCircle, SlidersHorizontal, Activity,
-  ShieldCheck, Heart, Globe, Award, Briefcase, LayoutGrid, List as ListIcon,
+  ShieldCheck, Heart, Globe, Award, Briefcase, LayoutGrid,
   Zap, ArrowUpDown,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router";
@@ -1758,7 +1758,7 @@ export default function Map() {
     } finally { setBookingId(null); }
   };
 
-  const openDirections = (lat: number, lon: number, name: string) => {
+  const openDirections = (lat: number, lon: number, _name: string) => {
     const base = position ? `&origin=${position[0]},${position[1]}` : "";
     window.open(`https://www.google.com/maps/dir/?api=1${base}&destination=${lat},${lon}&travelmode=driving`, "_blank");
   };
@@ -1880,13 +1880,6 @@ export default function Map() {
     { id:"pharmacies", emoji:"💊", label:"Pharmacies",           count:`${PHARMACIES.length} Stores`,    color:"rose" },
     { id:"packages",   emoji:"📦", label:"Health Packages",      count:`${PACKAGES.length} Packages`,    color:"amber" },
   ];
-  const catBorder: Record<string,string> = {
-    indigo:"border-indigo-200 hover:bg-indigo-600 hover:text-white hover:border-indigo-600",
-    emerald:"border-emerald-200 hover:bg-emerald-600 hover:text-white hover:border-emerald-600",
-    violet:"border-violet-200 hover:bg-violet-600 hover:text-white hover:border-violet-600",
-    rose:"border-rose-200 hover:bg-rose-600 hover:text-white hover:border-rose-600",
-    amber:"border-amber-200 hover:bg-amber-600 hover:text-white hover:border-amber-600",
-  };
   const allSpecs = Array.from(new Set(DOCTORS.map(d => d.specialization))).sort();
   const mapCenter: [number, number] = position || [15.3647, 75.124];
 
