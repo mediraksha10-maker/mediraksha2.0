@@ -1,11 +1,21 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-
 import { pool } from "../config/db.js";
+import {
+  validatePassword,
+  validateEmail,
+  validateUserSignup,
+  validateDoctorSignup,
+} from "../utils/security.js";
 
-// Generate JWT
-const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, {
+// Generate JWT with user/doctor ID and role
+const generateToken = (id, role = "user") => {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error("JWT_SECRET environment variable is not configured.");
+  }
+
+  return jwt.sign({ id, role }, secret, {
     expiresIn: "7d",
   });
 };
@@ -13,30 +23,38 @@ const generateToken = (id) => {
 // Cookie options
 const cookieOptions = {
   httpOnly: true,
-  secure: false,
-  sameSite: "strict",
+  secure: process.env.NODE_ENV === "production",
+  sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
   maxAge: 7 * 24 * 60 * 60 * 1000,
 };
 
 // SIGNUP
 export const signup = async (req, res) => {
   try {
-    const { name, email, age, gender, number, password } = req.body;
+    const validation = validateUserSignup(req.body);
+    if (!validation.isValid) {
+      return res.status(400).json({
+        success: false,
+        message: validation.message,
+      });
+    }
+
+    const { name, email, age, gender, number, password } = validation.sanitizedData;
 
     // Check existing user
     const existingUser = await pool.query(
-      "SELECT * FROM \"User\" WHERE email = $1",
+      'SELECT id FROM "User" WHERE LOWER(email) = LOWER($1)',
       [email]
     );
 
     if (existingUser.rows.length > 0) {
       return res.status(400).json({
         success: false,
-        message: "User already exists",
+        message: "An account with this email already exists.",
       });
     }
 
-    // Hash password
+    // Hash password with 10 salt rounds
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Insert user
@@ -44,16 +62,17 @@ export const signup = async (req, res) => {
       `INSERT INTO "User"
       (name, email, age, gender, number, password)
       VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING *`,
+      RETURNING id, name, email, age, gender, number, created_at`,
       [name, email, age, gender, number, hashedPassword]
     );
 
     const user = newUser.rows[0];
 
-    // Generate token
-    const token = generateToken(user.id);
+    // Generate token with role
+    const token = generateToken(user.id, "user");
+    res.cookie("token", token, cookieOptions);
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       message: "Signup successful",
       token,
@@ -61,12 +80,14 @@ export const signup = async (req, res) => {
         id: user.id,
         name: user.name,
         email: user.email,
+        role: "user",
       },
     });
   } catch (error) {
-    res.status(500).json({
+    console.error("User signup error:", error);
+    return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Internal server error during registration.",
     });
   }
 };
@@ -76,10 +97,33 @@ export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Email and password are required.",
+      });
+    }
+
+    const emailCheck = validateEmail(email);
+    if (!emailCheck.isValid) {
+      return res.status(400).json({
+        success: false,
+        message: emailCheck.message,
+      });
+    }
+
+    const passwordCheck = validatePassword(password);
+    if (!passwordCheck.isValid) {
+      return res.status(400).json({
+        success: false,
+        message: passwordCheck.message,
+      });
+    }
+
     // Find user
     const result = await pool.query(
-      "SELECT * FROM \"User\" WHERE email = $1",
-      [email]
+      'SELECT id, name, email, password FROM "User" WHERE LOWER(email) = LOWER($1)',
+      [emailCheck.normalizedEmail]
     );
 
     if (result.rows.length === 0) {
@@ -92,10 +136,7 @@ export const login = async (req, res) => {
     const user = result.rows[0];
 
     // Compare password
-    const isMatch = await bcrypt.compare(
-      password,
-      user.password
-    );
+    const isMatch = await bcrypt.compare(password, user.password);
 
     if (!isMatch) {
       return res.status(400).json({
@@ -104,10 +145,11 @@ export const login = async (req, res) => {
       });
     }
 
-    // Generate token
-    const token = generateToken(user.id);
+    // Generate token with role
+    const token = generateToken(user.id, "user");
+    res.cookie("token", token, cookieOptions);
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Login successful",
       token,
@@ -115,32 +157,50 @@ export const login = async (req, res) => {
         id: user.id,
         name: user.name,
         email: user.email,
+        role: "user",
       },
     });
   } catch (error) {
-    res.status(500).json({
+    console.error("User login error:", error);
+    return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Internal server error during login.",
     });
   }
 };
 
-
-// doctor signup
+// DOCTOR SIGNUP
 export const doctorSignup = async (req, res) => {
   try {
-    const { name, email, number, age, gender, hospital, speciality, password } = req.body;
+    const validation = validateDoctorSignup(req.body);
+    if (!validation.isValid) {
+      return res.status(400).json({
+        success: false,
+        message: validation.message,
+      });
+    }
+
+    const {
+      name,
+      email,
+      number,
+      age,
+      gender,
+      hospital,
+      speciality,
+      password,
+    } = validation.sanitizedData;
 
     // Check existing doctor
     const existingDoctor = await pool.query(
-      "SELECT * FROM \"Doctor\" WHERE email = $1",
+      'SELECT id FROM "Doctor" WHERE LOWER(email) = LOWER($1)',
       [email]
     );
 
     if (existingDoctor.rows.length > 0) {
       return res.status(400).json({
         success: false,
-        message: "Doctor already exists",
+        message: "An account with this email already exists.",
       });
     }
 
@@ -152,16 +212,17 @@ export const doctorSignup = async (req, res) => {
       `INSERT INTO "Doctor"
       (name, email, number, age, gender, hospital, speciality, password)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      RETURNING *`,
+      RETURNING id, name, email, number, age, gender, hospital, speciality, created_at`,
       [name, email, number, age, gender, hospital, speciality, hashedPassword]
     );
 
     const doctor = newDoctor.rows[0];
 
-    // Generate token
-    const token = generateToken(doctor.id);
+    // Generate token with doctor role
+    const token = generateToken(doctor.id, "doctor");
+    res.cookie("token", token, cookieOptions);
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       message: "Doctor signup successful",
       token,
@@ -174,25 +235,50 @@ export const doctorSignup = async (req, res) => {
         gender: doctor.gender,
         hospital: doctor.hospital,
         speciality: doctor.speciality,
+        role: "doctor",
       },
     });
   } catch (error) {
-    res.status(500).json({
+    console.error("Doctor signup error:", error);
+    return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Internal server error during doctor registration.",
     });
   }
 };
 
-// doctor login
+// DOCTOR LOGIN
 export const doctorLogin = async (req, res) => {
   try {
     const { email, password } = req.body;
 
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Email and password are required.",
+      });
+    }
+
+    const emailCheck = validateEmail(email);
+    if (!emailCheck.isValid) {
+      return res.status(400).json({
+        success: false,
+        message: emailCheck.message,
+      });
+    }
+
+    const passwordCheck = validatePassword(password);
+    if (!passwordCheck.isValid) {
+      return res.status(400).json({
+        success: false,
+        message: passwordCheck.message,
+      });
+    }
+
     // Find doctor
     const result = await pool.query(
-      "SELECT * FROM \"Doctor\" WHERE email = $1",
-      [email]
+      'SELECT id, name, email, number, age, gender, hospital, speciality, password FROM "Doctor" WHERE LOWER(email) = LOWER($1)',
+      [emailCheck.normalizedEmail]
     );
 
     if (result.rows.length === 0) {
@@ -205,10 +291,7 @@ export const doctorLogin = async (req, res) => {
     const doctor = result.rows[0];
 
     // Compare password
-    const isMatch = await bcrypt.compare(
-      password,
-      doctor.password
-    );
+    const isMatch = await bcrypt.compare(password, doctor.password);
 
     if (!isMatch) {
       return res.status(400).json({
@@ -217,10 +300,11 @@ export const doctorLogin = async (req, res) => {
       });
     }
 
-    // Generate token
-    const token = generateToken(doctor.id);
+    // Generate token with doctor role
+    const token = generateToken(doctor.id, "doctor");
+    res.cookie("token", token, cookieOptions);
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Doctor login successful",
       token,
@@ -233,21 +317,22 @@ export const doctorLogin = async (req, res) => {
         gender: doctor.gender,
         hospital: doctor.hospital,
         speciality: doctor.speciality,
+        role: "doctor",
       },
     });
   } catch (error) {
-    res.status(500).json({
+    console.error("Doctor login error:", error);
+    return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Internal server error during doctor login.",
     });
   }
 };
 
-
 // LOGOUT
 export const logout = (req, res) => {
   res.clearCookie("token", cookieOptions);
-  res.status(200).json({
+  return res.status(200).json({
     success: true,
     message: "Logout successful",
   });

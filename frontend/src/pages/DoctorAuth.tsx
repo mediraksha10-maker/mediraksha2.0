@@ -36,8 +36,30 @@ const DoctorAuth = () => {
     window.location.href = `${import.meta.env.VITE_API_BASE_URL}/auth/doctor/google`;
   };
 
+  const validatePasswordRules = (pwd: string): boolean => {
+    if (pwd.length < 8 || pwd.length > 12) {
+      toast.error("Password must be between 8 and 12 characters.");
+      return false;
+    }
+    if (!/[a-zA-Z]/.test(pwd)) {
+      toast.error("Password must contain at least one letter.");
+      return false;
+    }
+    if (!/\d/.test(pwd)) {
+      toast.error("Password must contain at least one number.");
+      return false;
+    }
+    if (/\s/.test(pwd)) {
+      toast.error("Password must not contain spaces.");
+      return false;
+    }
+    return true;
+  };
+
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!validatePasswordRules(password)) return;
+
     setLoading(true);
     try {
       const response = await api.post('/auth/doctor/signup', {
@@ -60,6 +82,8 @@ const DoctorAuth = () => {
 
   const handleLogIn = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!validatePasswordRules(loginPassword)) return;
+
     setLoading(true);
     try {
       const response = await api.post('/auth/doctor/login', {
@@ -128,11 +152,14 @@ const DoctorAuth = () => {
                   <input
                     type="password"
                     placeholder="••••••••"
+                    minLength={8}
+                    maxLength={12}
                     className={inputClass}
                     value={loginPassword}
                     onChange={(e) => setLoginPassword(e.target.value)}
                     required
                   />
+                  <span className="text-xs text-slate-400 mt-1 block ml-1">8-12 characters, letters and numbers</span>
                 </div>
               </div>
 
@@ -222,7 +249,17 @@ const DoctorAuth = () => {
 
                 <div className="form-control">
                   <label className={labelClass}>Password</label>
-                  <input type="password" placeholder="••••••••" className={inputClass} value={password} onChange={(e) => setPassword(e.target.value)} required />
+                  <input
+                    type="password"
+                    placeholder="••••••••"
+                    minLength={8}
+                    maxLength={12}
+                    className={inputClass}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                  />
+                  <span className="text-xs text-slate-400 mt-1 block ml-1">Must be 8-12 characters with letters and numbers</span>
                 </div>
               </div>
 

@@ -1,5 +1,6 @@
 import { pool } from '../config/db.js';
 import bcrypt from 'bcryptjs';
+import { validatePassword } from '../utils/security.js';
 
 // GET /api/doctor/info/detail
 export const getDoctorDetail = async (req, res) => {
@@ -43,8 +44,9 @@ export const updateDoctorDetail = async (req, res) => {
 
   // Handle password separately — hash before storing
   if (password) {
-    if (password.length < 6) {
-      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
+    const passwordCheck = validatePassword(password);
+    if (!passwordCheck.isValid) {
+      return res.status(400).json({ success: false, message: passwordCheck.message });
     }
     updates.password = await bcrypt.hash(password, 10);
   }

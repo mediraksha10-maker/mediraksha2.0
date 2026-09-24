@@ -29,8 +29,30 @@ const Auth = () => {
     window.location.href = `${import.meta.env.VITE_API_BASE_URL}/auth/google`;
   };
 
+  const validatePasswordRules = (pwd: string): boolean => {
+    if (pwd.length < 8 || pwd.length > 12) {
+      toast.error("Password must be between 8 and 12 characters.");
+      return false;
+    }
+    if (!/[a-zA-Z]/.test(pwd)) {
+      toast.error("Password must contain at least one letter.");
+      return false;
+    }
+    if (!/\d/.test(pwd)) {
+      toast.error("Password must contain at least one number.");
+      return false;
+    }
+    if (/\s/.test(pwd)) {
+      toast.error("Password must not contain spaces.");
+      return false;
+    }
+    return true;
+  };
+
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!validatePasswordRules(password)) return;
+
     setLoading(true);
     try {
       const response = await api.post('/auth/signup', {
@@ -52,6 +74,8 @@ const Auth = () => {
 
   const handleLogIn = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!validatePasswordRules(password)) return;
+
     setLoading(true);
     try {
       const response = await api.post('/auth/login', { email, password });
@@ -121,14 +145,19 @@ const Auth = () => {
                   onChange={(e) => setEmail(e.target.value)}
                   required
                 />
-                <input
-                  type="password"
-                  placeholder="Password"
-                  className="input input-bordered w-full bg-slate-50 border-none ring-1 ring-slate-200 focus:ring-2 focus:ring-indigo-500 transition-all"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
+                <div>
+                  <input
+                    type="password"
+                    placeholder="Password (8-12 chars, letters & numbers)"
+                    minLength={8}
+                    maxLength={12}
+                    className="input input-bordered w-full bg-slate-50 border-none ring-1 ring-slate-200 focus:ring-2 focus:ring-indigo-500 transition-all"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                  />
+                  <span className="text-xs text-slate-400 mt-1 block px-1">8-12 characters, letters and numbers</span>
+                </div>
               </div>
 
               <button
@@ -201,14 +230,19 @@ const Auth = () => {
                   value={number}
                   onChange={(e) => setNumber(e.target.value)}
                 />
-                <input
-                  type="password"
-                  placeholder="Password"
-                  className="input input-bordered w-full bg-slate-50 border-none ring-1 ring-slate-200 focus:ring-2 focus:ring-indigo-500 transition-all"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
+                <div>
+                  <input
+                    type="password"
+                    placeholder="Password (8-12 chars, letters & numbers)"
+                    minLength={8}
+                    maxLength={12}
+                    className="input input-bordered w-full bg-slate-50 border-none ring-1 ring-slate-200 focus:ring-2 focus:ring-indigo-500 transition-all"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                  />
+                  <span className="text-xs text-slate-400 mt-1 block px-1">Must be 8-12 characters with letters and numbers</span>
+                </div>
               </div>
 
               <button
