@@ -64,6 +64,7 @@ app.use(cookieParser());
 
 // Security: CORS Configuration with allowed origins
 const allowedOrigins = [
+  proccess.env.FRONTEND_URL,
   'http://localhost:5173',
   'http://localhost:3000',
   '',
